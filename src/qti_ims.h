@@ -35,19 +35,17 @@
  * any official policies, either expressed or implied.
  */
 
-#ifndef SAMPLE_EXT_H
-#define SAMPLE_EXT_H
+#ifndef QTI_IMS_H
+#define QTI_IMS_H
 
-#include <binder_ext_types.h>
+#include <binder_ext_ims.h>
 
-extern const char sample_plugin_name[] G_GNUC_INTERNAL;
-
-BinderExtPlugin*
-sample_ext_new(
-    void)
+BinderExtIms*
+qti_ims_new(
+    const char* slot)
     G_GNUC_INTERNAL;
 
-#endif /* SAMPLE_EXT_H */
+#endif /* QTI_IMS_H */
 
 /*
  * Local Variables:

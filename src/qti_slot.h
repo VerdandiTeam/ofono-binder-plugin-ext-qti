@@ -35,36 +35,20 @@
  * any official policies, either expressed or implied.
  */
 
-#include "sample_ext.h"
+#ifndef QTI_SLOT_H
+#define QTI_SLOT_H
 
-#include <binder_ext_plugin.h>
+#include <binder_ext_slot.h>
 
-#include <ofono/log.h>
-#include <ofono/plugin.h>
+#include <radio_types.h>
 
-static
-int
-sample_plugin_init()
-{
-    BinderExtPlugin* ext;
+BinderExtSlot*
+qti_slot_new(
+    RadioInstance* radio,
+    GHashTable* params)
+    G_GNUC_INTERNAL;
 
-    DBG("");
-    ext = sample_ext_new();
-    binder_ext_plugin_register(ext);
-    binder_ext_plugin_unref(ext); /* libofonobinderpluginext keeps the ref */
-    return 0;
-}
-
-static
-void
-sample_plugin_exit()
-{
-    DBG("");
-    binder_ext_plugin_unregister(sample_plugin_name);
-}
-
-OFONO_PLUGIN_DEFINE(sample, "Sample binder plugin extension", OFONO_VERSION,
-    OFONO_PLUGIN_PRIORITY_DEFAULT, sample_plugin_init, sample_plugin_exit)
+#endif /* QTI_SLOT_H */
 
 /*
  * Local Variables:

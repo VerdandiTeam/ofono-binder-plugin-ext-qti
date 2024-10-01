@@ -35,79 +35,47 @@
  * any official policies, either expressed or implied.
  */
 
-#include "sample_slot.h"
-#include "sample_ims.h"
+#include "qti_ext.h"
+#include "qti_slot.h"
 
-#include <binder_ext_slot_impl.h>
+#include <binder_ext_plugin_impl.h>
 
-#include <radio_instance.h>
+typedef struct qti_ext {
+    BinderExtPlugin parent;
+} QtiExt;
 
-typedef BinderExtSlotClass SampleSlotClass;
-typedef struct sample_slot {
-    BinderExtSlot parent;
-    BinderExtIms* ims;
-} SampleSlot;
+typedef BinderExtPluginClass QtiExtClass;
 
-GType sample_slot_get_type() G_GNUC_INTERNAL;
-G_DEFINE_TYPE(SampleSlot, sample_slot, BINDER_EXT_TYPE_SLOT)
+GType qti_ext_get_type() G_GNUC_INTERNAL;
+G_DEFINE_TYPE(QtiExt, qti_ext, BINDER_EXT_TYPE_PLUGIN)
 
-#define THIS_TYPE sample_slot_get_type()
-#define THIS(obj) G_TYPE_CHECK_INSTANCE_CAST(obj, THIS_TYPE, SampleSlot)
-#define PARENT_CLASS sample_slot_parent_class
+#define THIS_TYPE qti_ext_get_type()
+#define THIS(obj) G_TYPE_CHECK_INSTANCE_CAST(obj, THIS_TYPE, QtiExt)
 
-static
-void
-sample_slot_terminate(
-    SampleSlot* self)
-{
-    if (self->ims) {
-        binder_ext_ims_unref(self->ims);
-        self->ims = NULL;
-    }
-}
+const char qti_plugin_name[] = "qti";
 
 /*==========================================================================*
- * BinderExtSlot
+ * BinderExtPluginClass
  *==========================================================================*/
 
 static
-gpointer
-sample_slot_get_interface(
-    BinderExtSlot* slot,
-    GType iface)
+BinderExtSlot*
+qti_ext_new_slot(
+    BinderExtPlugin* plugin,
+    RadioInstance* radio,
+    GHashTable* params)
 {
-    SampleSlot* self = THIS(slot);
-
-    if (iface == BINDER_EXT_TYPE_IMS) {
-        return self->ims;
-    } else {
-        return BINDER_EXT_SLOT_CLASS(PARENT_CLASS)->get_interface(slot, iface);
-    }
-}
-
-static
-void
-sample_slot_shutdown(
-    BinderExtSlot* slot)
-{
-    sample_slot_terminate(THIS(slot));
-    BINDER_EXT_SLOT_CLASS(PARENT_CLASS)->shutdown(slot);
+    return qti_slot_new(radio, params);
 }
 
 /*==========================================================================*
  * API
  *==========================================================================*/
 
-BinderExtSlot*
-sample_slot_new(
-    RadioInstance* radio,
-    GHashTable* params)
+BinderExtPlugin*
+qti_ext_new()
 {
-    SampleSlot* self = g_object_new(THIS_TYPE, NULL);
-    BinderExtSlot* slot = &self->parent;
-
-    self->ims = sample_ims_new(radio->slot);
-    return slot;
+    return g_object_new(THIS_TYPE, NULL);
 }
 
 /*==========================================================================*
@@ -116,28 +84,18 @@ sample_slot_new(
 
 static
 void
-sample_slot_finalize(
-    GObject* object)
-{
-    sample_slot_terminate(THIS(object));
-    G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
-}
-
-static
-void
-sample_slot_init(
-    SampleSlot* self)
+qti_ext_init(
+    QtiExt* self)
 {
 }
 
 static
 void
-sample_slot_class_init(
-    SampleSlotClass* klass)
+qti_ext_class_init(
+    QtiExtClass* klass)
 {
-    klass->get_interface = sample_slot_get_interface;
-    klass->shutdown = sample_slot_shutdown;
-    G_OBJECT_CLASS(klass)->finalize = sample_slot_finalize;
+    klass->plugin_name = qti_plugin_name;
+    klass->new_slot = qti_ext_new_slot;
 }
 
 /*

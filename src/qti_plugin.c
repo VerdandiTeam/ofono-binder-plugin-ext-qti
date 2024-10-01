@@ -35,17 +35,36 @@
  * any official policies, either expressed or implied.
  */
 
-#ifndef SAMPLE_IMS_H
-#define SAMPLE_IMS_H
+#include "qti_ext.h"
 
-#include <binder_ext_ims.h>
+#include <binder_ext_plugin.h>
 
-BinderExtIms*
-sample_ims_new(
-    const char* slot)
-    G_GNUC_INTERNAL;
+#include <ofono/log.h>
+#include <ofono/plugin.h>
 
-#endif /* SAMPLE_IMS_H */
+static
+int
+qti_plugin_init()
+{
+    BinderExtPlugin* ext;
+
+    DBG("");
+    ext = qti_ext_new();
+    binder_ext_plugin_register(ext);
+    binder_ext_plugin_unref(ext); /* libofonobinderpluginext keeps the ref */
+    return 0;
+}
+
+static
+void
+qti_plugin_exit()
+{
+    DBG("");
+    binder_ext_plugin_unregister(qti_plugin_name);
+}
+
+OFONO_PLUGIN_DEFINE(qti, "Qti binder plugin extension", OFONO_VERSION,
+    OFONO_PLUGIN_PRIORITY_DEFAULT, qti_plugin_init, qti_plugin_exit)
 
 /*
  * Local Variables:

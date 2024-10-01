@@ -1,4 +1,4 @@
-Sample ofono binder plugin extension
+Qti ofono binder plugin extension
 ====================================
 
 It doesn't really do anything. It's just a demonstration of how
@@ -7,21 +7,21 @@ example) are supposed to be implemented.
 
 Here is what happens when this extension gets loaded.
 
-1. ofono calls sample_plugin_init(). That function creates an
-   instance of SampleExt and registers it under the name "sample"
+1. ofono calls qti_plugin_init(). That function creates an
+   instance of QtiExt and registers it under the name "qti"
    by calling binder_ext_plugin_register()
 
 2. ofono-binder-plugin finds the extension by name which it reads
-   from /etc/ofono/binder.d/sample.conf
+   from /etc/ofono/binder.d/qti.conf
 
-3. ofono-binder-plugin calls sample_ext_new_slot() method of SampleExt
-   for each configured/detected slot. That creates per-slot SampleSlot
+3. ofono-binder-plugin calls qti_ext_new_slot() method of QtiExt
+   for each configured/detected slot. That creates per-slot QtiSlot
    objects.
 
-4. ofono-binder-plugin asks SampleSlot for particular interfaces by
-   calling its sample_slot_get_interface() method. SampleSlot only
+4. ofono-binder-plugin asks QtiSlot for particular interfaces by
+   calling its qti_slot_get_interface() method. QtiSlot only
    reacts to BINDER_EXT_TYPE_IMS query and returns a pointer to
-   SampleIms object implementing BinderExtImsInterface
+   QtiIms object implementing BinderExtImsInterface
 
 5. ofono-binder-plugin then goes on to call BinderExtImsInterface
-   methods of SampleIms object(s).
+   methods of QtiIms object(s).
