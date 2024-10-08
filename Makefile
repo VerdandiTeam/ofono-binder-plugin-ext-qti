@@ -2,15 +2,18 @@
 
 .PHONY: clean all debug release
 
+# Allow building against an oFono variant.
+OFONO_PKG ?= ofono
+
 #
 # Required packages
 #
-# ofono.pc adds -export-symbols-regex linker option which doesn't  work
+# ofono.pc adds -export-symbols-regex linker option which doesn't work
 # on all platforms.
 #
 
 LDPKGS = libofonobinderpluginext libgbinder-radio libgbinder libglibutil gobject-2.0 glib-2.0
-PKGS = ofono $(LDPKGS)
+PKGS = $(OFONO_PKG) $(LDPKGS)
 
 #
 # Default target
@@ -36,7 +39,8 @@ SRC = \
   qti_ext.c \
   qti_ims.c \
   qti_plugin.c \
-  qti_slot.c
+  qti_slot.c \
+  qti_radio_ext.c
 
 #
 # Directories
@@ -125,15 +129,12 @@ $(DEBUG_SO): $(DEBUG_OBJS)
 
 $(RELEASE_SO): $(RELEASE_OBJS)
 	$(LD) $(RELEASE_OBJS) $(RELEASE_LDFLAGS) $(RELEASE_LIBS) -o $@
-ifeq ($(KEEP_SYMBOLS),0)
-	$(STRIP) $@
-endif
 
 #
 # Install
 #
 
-PLUGINDIR ?= $$(pkg-config ofono --variable=plugindir)
+PLUGINDIR ?= $$(pkg-config $(OFONO_PKG) --variable=plugindir)
 ABS_PLUGINDIR := $(shell echo /$(PLUGINDIR) | sed -r 's|/+|/|g')
 
 INSTALL = install

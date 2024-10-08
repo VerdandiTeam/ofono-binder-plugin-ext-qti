@@ -37,6 +37,7 @@
 
 #include "qti_slot.h"
 #include "qti_ims.h"
+#include "qti_radio_ext.h"
 
 #include <binder_ext_slot_impl.h>
 
@@ -46,6 +47,7 @@ typedef BinderExtSlotClass QtiSlotClass;
 typedef struct qti_slot {
     BinderExtSlot parent;
     BinderExtIms* ims;
+    QtiRadioExt* radio_ext;
 } QtiSlot;
 
 GType qti_slot_get_type() G_GNUC_INTERNAL;
@@ -105,8 +107,13 @@ qti_slot_new(
 {
     QtiSlot* self = g_object_new(THIS_TYPE, NULL);
     BinderExtSlot* slot = &self->parent;
+    char* radio_slot =  g_strdup_printf("imsradio%d", radio->slot_index);
 
-    self->ims = qti_ims_new(radio->slot);
+    self->radio_ext = qti_radio_ext_new(radio->dev, radio_slot);
+    if (self->radio_ext) {
+        self->ims = qti_ims_new(radio_slot, self->radio_ext);
+    }
+
     return slot;
 }
 

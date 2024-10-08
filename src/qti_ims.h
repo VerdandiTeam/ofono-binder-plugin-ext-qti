@@ -40,9 +40,12 @@
 
 #include <binder_ext_ims.h>
 
+typedef struct qti_radio_ext QtiRadioExt;
+
 BinderExtIms*
 qti_ims_new(
-    const char* slot)
+    const char* slot,
+    QtiRadioExt* radio_ext)
     G_GNUC_INTERNAL;
 
 #endif /* QTI_IMS_H */

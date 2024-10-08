@@ -37,15 +37,25 @@
 
 #include "qti_ims.h"
 #include "qti_slot.h"
+#include "qti_radio_ext.h"
 
 #include <binder_ext_ims_impl.h>
 
 #include <ofono/log.h>
 
+#include <gutil_macros.h>
+#include <gutil_log.h>
+#include <gbinder.h>
+
+#define DBG(fmt, ...) \
+    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, fmt, ##__VA_ARGS__)
+
 typedef GObjectClass QtiImsClass;
 typedef struct qti_ims {
     GObject parent;
     char* slot;
+    QtiRadioExt* radio_ext;
+    BINDER_EXT_IMS_STATE ims_state;
 } QtiIms;
 
 static
@@ -70,6 +80,95 @@ enum qti_ims_signal {
 
 static guint qti_ims_signals[SIGNAL_COUNT] = { 0 };
 
+typedef struct qti_ims_result_request {
+    BinderExtIms* ext;
+    BinderExtImsResultFunc complete;
+    GDestroyNotify destroy;
+    void* user_data;
+} QtiImsResultRequest;
+
+static
+QtiImsResultRequest*
+qti_ims_result_request_new(
+    BinderExtIms* ext,
+    BinderExtImsResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    QtiImsResultRequest* req = g_slice_new(QtiImsResultRequest);
+
+    req->ext = binder_ext_ims_ref(ext);
+    req->complete = complete;
+    req->destroy = destroy;
+    req->user_data = user_data;
+    return req;
+}
+
+static
+void
+qti_ims_result_request_free(
+    QtiImsResultRequest* req)
+{
+    binder_ext_ims_unref(req->ext);
+    gutil_slice_free(req);
+}
+
+static
+void
+qti_ims_result_request_complete(
+    QtiRadioExt* radio_ext,
+    int result,
+    void* user_data)
+{
+    QtiImsResultRequest* req = user_data;
+
+    req->complete(req->ext, result ? BINDER_EXT_IMS_RESULT_ERROR :
+        BINDER_EXT_IMS_RESULT_OK, req->user_data);
+}
+
+static
+void
+qti_ims_result_request_destroy(
+    gpointer user_data)
+{
+    QtiImsResultRequest* req = user_data;
+
+    if (req->destroy) {
+        req->destroy(req->user_data);
+    }
+    qti_ims_result_request_free(req);
+}
+
+static
+void
+qti_ims_reg_status_changed(
+    QtiRadioExt* radio,
+    QTI_RADIO_REG_STATE state,
+    void* user_data)
+{
+    QtiIms* self = THIS(user_data);
+    BINDER_EXT_IMS_STATE ims_state;
+
+    switch (state) {
+    case QTI_RADIO_REG_STATE_REGISTERING:
+        ims_state = BINDER_EXT_IMS_STATE_REGISTERING;
+        break;
+    case QTI_RADIO_REG_STATE_REGISTERED:
+        ims_state = BINDER_EXT_IMS_STATE_REGISTERED;
+        break;
+    case QTI_RADIO_REG_STATE_NOT_REGISTERED:
+        ims_state = BINDER_EXT_IMS_STATE_NOT_REGISTERED;
+        break;
+    default:
+        ims_state = BINDER_EXT_IMS_STATE_UNKNOWN;
+    }
+
+    if (ims_state != self->ims_state) {
+        self->ims_state = ims_state;
+        g_signal_emit(self, qti_ims_signals[SIGNAL_STATE_CHANGED], 0);
+    }
+}
+
 /*==========================================================================*
  * BinderExtImsInterface
  *==========================================================================*/
@@ -81,10 +180,11 @@ qti_ims_get_state(
 {
     QtiIms* self = THIS(ext);
 
-    DBG("%s", self->slot);
-#pragma message("TODO: return the actual state")
-    return BINDER_EXT_IMS_STATE_UNKNOWN;
+    DBG("%s ims_state=%d", self->slot, self->ims_state);
+    return self->ims_state;
 }
+
+// trun BINDER_EXT_IMS_REGISTRATION to QTI
 
 static
 guint
@@ -96,14 +196,22 @@ qti_ims_set_registration(
     void* user_data)
 {
     QtiIms* self = THIS(ext);
-    const gboolean on = (registration != BINDER_EXT_IMS_REGISTRATION_OFF);
+    const gboolean enabled = (registration != BINDER_EXT_IMS_REGISTRATION_OFF);
 
-    DBG("%s %s", self->slot, on ? "on" : "off");
-    if (on) {
-#pragma message("TODO: turn IMS registration on")
+    QtiImsResultRequest* req = qti_ims_result_request_new(ext,
+        complete, destroy, user_data);
+    guint id = qti_radio_ext_set_reg_state(self->radio_ext,
+        registration,
+        complete ? qti_ims_result_request_complete : NULL,
+        qti_ims_result_request_destroy, req);
+
+    DBG("%s %s", self->slot, enabled ? "on" : "off");
+    if (enabled) {
+        return id;
     } else {
-#pragma message("TODO: turn IMS registration off")
+        qti_ims_result_request_free(req);
     }
+
     return 0;
 }
 
@@ -154,7 +262,8 @@ qti_ims_iface_init(
 
 BinderExtIms*
 qti_ims_new(
-    const char* slot)
+    const char* slot,
+    QtiRadioExt* radio_ext)
 {
     QtiIms* self = g_object_new(THIS_TYPE, NULL);
 
@@ -163,6 +272,14 @@ qti_ims_new(
      * on registration state change and emits SIGNAL_STATE_CHANGED.
      */
     self->slot = g_strdup(slot);
+    self->radio_ext = qti_radio_ext_ref(radio_ext);
+    self->ims_state = BINDER_EXT_IMS_STATE_NOT_REGISTERED;
+
+    if (self->radio_ext) {
+        qti_radio_ext_add_ims_reg_status_handler(self->radio_ext,
+            qti_ims_reg_status_changed, self);
+    }
+
     return BINDER_EXT_IMS(self);
 }
 
@@ -178,6 +295,7 @@ qti_ims_finalize(
     QtiIms* self = THIS(object);
 
     g_free(self->slot);
+    qti_radio_ext_unref(self->radio_ext);
     G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }
 

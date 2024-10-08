@@ -1,0 +1,720 @@
+/*
+ *  oFono - Open Source Telephony - binder based adaptation QTI plugin
+ *
+ *  Copyright (C) 2022 Jolla Ltd.
+ *  Copyright (C) 2024 TheKit <thekit@disroot.org>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ */
+
+#include <glib-object.h>
+
+#include "qti_radio_ext.h"
+#include "qti_radio_ext_types.h"
+
+#include <radio_types.h>
+#include <binder_ext_ims_impl.h>
+
+#include <ofono/log.h>
+#include <gbinder.h>
+
+#include <gutil_idlepool.h>
+#include <gutil_log.h>
+#include <gutil_macros.h>
+
+#define DBG(fmt, ...) \
+    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, fmt, ##__VA_ARGS__)
+
+
+#define QTI_RADIO_CALL_TIMEOUT (3*1000) /* ms */
+
+typedef GObjectClass QtiRadioExtClass;
+typedef struct qti_radio_ext {
+    GObject parent;
+    char* slot;
+    GBinderClient* client;
+    GBinderRemoteObject* remote;
+    GBinderLocalObject* response;
+    GBinderLocalObject* indication;
+    GUtilIdlePool* pool;
+    GHashTable* requests;
+} QtiRadioExt;
+
+GType qti_radio_ext_get_type() G_GNUC_INTERNAL;
+G_DEFINE_TYPE(QtiRadioExt, qti_radio_ext, G_TYPE_OBJECT)
+
+#define THIS_TYPE qti_radio_ext_get_type()
+#define THIS(obj) G_TYPE_CHECK_INSTANCE_CAST(obj, THIS_TYPE, QtiRadioExt)
+#define PARENT_CLASS qti_radio_ext_parent_class
+#define KEY(serial) GUINT_TO_POINTER(serial)
+
+typedef struct qti_radio_ext_request QtiRadioExtRequest;
+
+typedef void (*QtiRadioExtArgWriteFunc)(
+    GBinderWriter* args,
+    va_list va);
+
+typedef void (*QtiRadioExtRequestHandlerFunc)(
+    QtiRadioExtRequest* req,
+    const GBinderReader* args);
+
+typedef void (*QtiRadioExtResultFunc)(
+    QtiRadioExt* radio,
+    int result,
+    void* user_data);
+
+struct qti_radio_ext_request {
+    guint id;  /* request id */
+    gulong tx; /* binder transaction id */
+    QtiRadioExt* radio;
+    gint32 response_code;
+    QtiRadioExtRequestHandlerFunc handle_response;
+    void (*free)(QtiRadioExtRequest* req);
+    GDestroyNotify destroy;
+    void* user_data;
+};
+
+typedef struct qti_radio_ext_result_request {
+    QtiRadioExtRequest base;
+    QtiRadioExtResultFunc complete;
+} QtiRadioExtResultRequest;
+
+enum qti_radio_ext_signal {
+    SIGNAL_IMS_REG_STATUS_CHANGED,
+    SIGNAL_COUNT
+};
+
+#define SIGNAL_IMS_REG_STATUS_CHANGED_NAME    "qti-radio-ext-ims-reg-status-changed"
+
+static guint qti_radio_ext_signals[SIGNAL_COUNT] = { 0 };
+
+static GLogModule qti_radio_ext_binder_log_module = {
+    .max_level = GLOG_LEVEL_VERBOSE,
+    .level = GLOG_LEVEL_VERBOSE,
+    .flags = GLOG_FLAG_HIDE_NAME
+};
+
+static GLogModule qti_radio_ext_binder_dump_module = {
+    .parent = &qti_radio_ext_binder_log_module,
+    .max_level = GLOG_LEVEL_VERBOSE,
+    .level = GLOG_LEVEL_INHERIT,
+    .flags = GLOG_FLAG_HIDE_NAME
+};
+
+static
+void
+qti_radio_ext_log_notify(
+    struct ofono_debug_desc* desc)
+{
+    qti_radio_ext_binder_log_module.level = (desc->flags &
+        OFONO_DEBUG_FLAG_PRINT) ? GLOG_LEVEL_VERBOSE : GLOG_LEVEL_INHERIT;
+}
+
+static
+void
+qti_radio_ext_dump_notify(
+    struct ofono_debug_desc* desc)
+{
+    qti_radio_ext_binder_dump_module.level = (desc->flags &
+        OFONO_DEBUG_FLAG_PRINT) ? GLOG_LEVEL_VERBOSE : GLOG_LEVEL_INHERIT;
+}
+
+static struct ofono_debug_desc logger_trace OFONO_DEBUG_ATTR = {
+    .name = "qti_binder_trace",
+    .flags = OFONO_DEBUG_FLAG_DEFAULT | OFONO_DEBUG_FLAG_HIDE_NAME,
+    .notify = qti_radio_ext_log_notify
+};
+
+static struct ofono_debug_desc logger_dump OFONO_DEBUG_ATTR = {
+    .name = "qti_binder_dump",
+    .flags = OFONO_DEBUG_FLAG_DEFAULT | OFONO_DEBUG_FLAG_HIDE_NAME,
+    .notify = qti_radio_ext_dump_notify
+};
+
+static
+guint
+qti_radio_ext_new_req_id()
+{
+    static guint last_id = 0;
+    return last_id++;
+}
+
+static
+void
+qti_radio_ext_log_req(
+    QtiRadioExt* self,
+    guint32 code,
+    guint32 serial)
+{
+    static const GLogModule* log = &qti_radio_ext_binder_log_module;
+    const int level = GLOG_LEVEL_VERBOSE;
+    const char* name;
+
+    if (!gutil_log_enabled(log, level))
+        return;
+
+    name = qti_radio_ext_req_name(code);
+
+    if (serial) {
+        gutil_log(log, level, "%s< [%08x] %u %s",
+            self->slot, serial, code, name ? name : "???");
+    } else {
+        gutil_log(log, level, "%s< %u %s",
+            self->slot, code, name ? name : "???");
+    }
+}
+
+void
+qti_radio_ext_log_resp(
+    QtiRadioExt* self,
+    guint32 code,
+    guint32 serial)
+{
+    static const GLogModule* log = &qti_radio_ext_binder_log_module;
+    const int level = GLOG_LEVEL_VERBOSE;
+    const char* name;
+
+    if (!gutil_log_enabled(log, level))
+        return;
+
+    name = qti_radio_ext_resp_name(code);
+
+    gutil_log(log, level, "%s> [%08x] %u %s",
+        self->slot, serial, code, name ? name : "???");
+}
+
+static
+void
+qti_radio_ext_log_ind(
+    QtiRadioExt* self,
+    guint32 code)
+{
+    static const GLogModule* log = &qti_radio_ext_binder_log_module;
+    const int level = GLOG_LEVEL_VERBOSE;
+    const char* name;
+
+    if (!gutil_log_enabled(log, level))
+        return;
+
+    name = qti_radio_ext_ind_name(code);
+
+    gutil_log(log, level, "%s > %u %s", self->slot, code,
+        name ? name : "???");
+}
+
+static
+void
+qti_radio_ext_dump_data(
+    const GBinderReader* reader)
+{
+    static const GLogModule* log = &qti_radio_ext_binder_dump_module;
+    const int level = GLOG_LEVEL_VERBOSE;
+    gsize size;
+    const guint8* data;
+
+    if (!gutil_log_enabled(log, level))
+        return;
+
+    data = gbinder_reader_get_data(reader, &size);
+    gutil_log_dump(log, level, "  ",  data, size);
+}
+
+static
+void
+qti_radio_ext_dump_request(
+    GBinderLocalRequest* args)
+{
+    static const GLogModule* log = &qti_radio_ext_binder_dump_module;
+    const int level = GLOG_LEVEL_VERBOSE;
+    GBinderWriter writer;
+    const guint8* data;
+    gsize size;
+
+    if (!gutil_log_enabled(log, level))
+        return;
+
+    /* Use writer API to fetch the raw data */
+    gbinder_local_request_init_writer(args, &writer);
+    data = gbinder_writer_get_data(&writer, &size);
+    gutil_log_dump(log, level, "  ", data, size);
+}
+
+static
+const QtiRadioRegInfo*
+qti_radio_ext_read_ims_reg_status_info(
+    QtiRadioExt* self,
+    GBinderReader* reader)
+{
+    const QtiRadioRegInfo* info;
+
+    info = gbinder_reader_read_hidl_struct(reader, QtiRadioRegInfo);
+    if (info) {
+        const char *uri = info->uri.data.str ? info->uri.data.str : "";
+        const char *error_msg = info->error_message.data.str ? info->error_message.data.str : "";
+
+        DBG("%s: QtiRadioRegInfo state:%d radiotech:%d"
+            " error_code:%d\n"
+            " uri:%s error_msg:%s",
+            self->slot,
+            info->state,
+            info->radio_tech,
+            info->error_code,
+            uri, error_msg);
+
+        return info;
+    } else {
+        DBG("%s: failed to parse QtiRadioRegInfo", self->slot);
+        return NULL;
+    }
+}
+
+static
+void
+qti_radio_ext_handle_ims_reg_status_report(
+    QtiRadioExt* self,
+    const GBinderReader* args)
+{
+    GBinderReader reader;
+
+    gbinder_reader_copy(&reader, args);
+    const QtiRadioRegInfo* info =
+        qti_radio_ext_read_ims_reg_status_info(self, &reader);
+
+    g_signal_emit(self, qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED],
+                    0, info->state);
+}
+
+
+static
+GBinderLocalReply*
+qti_radio_ext_indication(
+    GBinderLocalObject* obj,
+    GBinderRemoteRequest* req,
+    guint code,
+    guint flags,
+    int* status,
+    void* user_data)
+{
+    QtiRadioExt* self = THIS(user_data);
+    const char* iface = gbinder_remote_request_interface(req);
+    GBinderReader args;
+
+    gbinder_remote_request_init_reader(req, &args);
+    qti_radio_ext_log_ind(self, code);
+    qti_radio_ext_dump_data(&args);
+
+    if (g_str_equal(iface, QTI_RADIO_INDICATION_1_0)) {
+        switch(code) {
+        case QTI_RADIO_IND_REG_STATE_INDICATION:
+            qti_radio_ext_handle_ims_reg_status_report(self, &args);
+            return NULL;
+        }
+    }
+
+
+    return NULL;
+}
+
+gulong
+qti_radio_ext_add_ims_reg_status_handler(
+    QtiRadioExt* self,
+    QtiRadioExtImsRegStatusFunc handler,
+    void* user_data)
+{
+    return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
+        SIGNAL_IMS_REG_STATUS_CHANGED_NAME, G_CALLBACK(handler), user_data) : 0;
+}
+
+static
+GBinderLocalReply*
+qti_radio_ext_response(
+    GBinderLocalObject* obj,
+    GBinderRemoteRequest* req,
+    guint code,
+    guint flags,
+    int* status,
+    void* user_data)
+{
+    QtiRadioExt* self = THIS(user_data);
+    const char* iface = gbinder_remote_request_interface(req);
+    GBinderReader reader;
+    guint32 serial = 0;
+
+    gbinder_remote_request_init_reader(req, &reader);
+
+    gbinder_reader_read_uint32(&reader, &serial);
+    qti_radio_ext_log_resp(self, code, serial);
+    qti_radio_ext_dump_data(&reader);
+
+    if (serial) {
+        QtiRadioExtRequest* req = g_hash_table_lookup(self->requests,
+            KEY(serial));
+
+        if (req && req->response_code == code) {
+            g_object_ref(self);
+            if (req->handle_response) {
+                req->handle_response(req, &reader);
+            }
+            g_hash_table_remove(self->requests, KEY(serial));
+            g_object_unref(self);
+        } else {
+            DBG("Unexpected response %s %u", iface, code);
+            *status = GBINDER_STATUS_FAILED;
+        }
+    }
+
+    return NULL;
+}
+
+static
+void
+qti_radio_ext_result_response(
+    QtiRadioExtRequest* req,
+    const GBinderReader* args)
+{
+    gint32 result;
+    GBinderReader reader;
+    QtiRadioExt* self = req->radio;
+    QtiRadioExtResultRequest* result_req = G_CAST(req,
+        QtiRadioExtResultRequest, base);
+
+    gbinder_reader_copy(&reader, args);
+    if (!gbinder_reader_read_int32(&reader, &result)) {
+        ofono_warn("Failed to parse response");
+        result = -1;
+    }
+    if (result_req->complete) {
+        result_req->complete(self, result, req->user_data);
+    }
+}
+
+static
+void
+qti_radio_ext_request_default_free(
+    QtiRadioExtRequest* req)
+{
+    if (req->destroy) {
+        req->destroy(req->user_data);
+    }
+    g_free(req);
+}
+
+static
+void
+qti_radio_ext_request_destroy(
+    gpointer user_data)
+{
+    QtiRadioExtRequest* req = user_data;
+
+    gbinder_client_cancel(req->radio->client, req->tx);
+    req->free(req);
+}
+
+static
+gpointer
+qti_radio_ext_request_alloc(
+    QtiRadioExt* self,
+    gint32 resp,
+    QtiRadioExtRequestHandlerFunc handler,
+    GDestroyNotify destroy,
+    void* user_data,
+    gsize size)
+{
+    QtiRadioExtRequest* req = g_malloc0(size);
+
+    req->radio = self;
+    req->response_code = resp;
+    req->handle_response = handler;
+    req->id = qti_radio_ext_new_req_id(self);
+    req->free = qti_radio_ext_request_default_free;
+    req->destroy = destroy;
+    req->user_data = user_data;
+    g_hash_table_insert(self->requests, KEY(req->id), req);
+    return req;
+}
+
+static
+QtiRadioExtResultRequest*
+qti_radio_ext_result_request_new(
+    QtiRadioExt* self,
+    gint32 resp,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    QtiRadioExtResultRequest* req =
+        (QtiRadioExtResultRequest*)qti_radio_ext_request_alloc(self, resp,
+            qti_radio_ext_result_response, destroy, user_data,
+            sizeof(QtiRadioExtResultRequest));
+
+    req->complete = complete;
+    return req;
+}
+
+static
+void
+qti_radio_ext_request_sent(
+    GBinderClient* client,
+    GBinderRemoteReply* reply,
+    int status,
+    void* user_data)
+{
+    ((QtiRadioExtRequest*)user_data)->tx = 0;
+}
+
+static
+gulong
+qti_radio_ext_call(
+    QtiRadioExt* self,
+    gint32 code,
+    gint32 serial,
+    GBinderLocalRequest* req,
+    GBinderClientReplyFunc reply,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    qti_radio_ext_log_req(self, code, serial);
+    qti_radio_ext_dump_request(req);
+
+    return gbinder_client_transact(self->client, code,
+        GBINDER_TX_FLAG_ONEWAY, req, reply, destroy, user_data);
+}
+
+static
+gulong
+qti_radio_ext_submit_request(
+    QtiRadioExtRequest* request,
+    gint32 code,
+    gint32 serial,
+    GBinderLocalRequest* args)
+{
+    return (request->tx = qti_radio_ext_call(request->radio,
+        code, serial, args, qti_radio_ext_request_sent, NULL, request));
+}
+
+static
+guint
+qti_radio_ext_result_request_submit(
+    QtiRadioExt* self,
+    gint32 req_code,
+    gint32 resp_code,
+    QtiRadioExtArgWriteFunc write_args,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data,
+    ...)
+{
+    if (G_LIKELY(self)) {
+        GBinderLocalRequest* args;
+        GBinderWriter writer;
+        QtiRadioExtResultRequest* req =
+            qti_radio_ext_result_request_new(self, resp_code,
+                complete, destroy, user_data);
+        const guint req_id = req->base.id;
+
+        args = gbinder_client_new_request2(self->client, req_code);
+        gbinder_local_request_init_writer(args, &writer);
+        gbinder_writer_append_int32(&writer, req_id);
+        if (write_args) {
+            va_list va;
+
+            va_start(va, user_data);
+            write_args(&writer, va);
+            va_end(va);
+        }
+
+        /* Submit the request */
+        qti_radio_ext_submit_request(&req->base, req_code, req_id, args);
+        gbinder_local_request_unref(args);
+        if (req->base.tx) {
+            /* Success */
+            return req_id;
+        }
+        g_hash_table_remove(self->requests, KEY(req_id));
+    }
+    return 0;
+}
+
+static
+QtiRadioExt*
+qti_radio_ext_create(
+    GBinderServiceManager* sm,
+    GBinderRemoteObject* remote,
+    const char* slot)
+{
+    QtiRadioExt* self = g_object_new(THIS_TYPE, NULL);
+    const gint code = QTI_RADIO_REQ_SET_CALLBACK;
+    GBinderLocalRequest* req;
+    GBinderWriter writer;
+    int status;
+
+    self->slot = g_strdup(slot);
+    self->client = gbinder_client_new(remote, QTI_RADIO_1_0);
+    self->response = gbinder_servicemanager_new_local_object(sm,
+        QTI_RADIO_RESPONSE_1_0, qti_radio_ext_response, self);
+    self->indication = gbinder_servicemanager_new_local_object(sm,
+        QTI_RADIO_INDICATION_1_0, qti_radio_ext_indication, self);
+
+    req = gbinder_client_new_request2(self->client, code);
+    gbinder_local_request_init_writer(req, &writer);
+    gbinder_writer_append_local_object(&writer, self->response);
+    gbinder_writer_append_local_object(&writer, self->indication);
+
+    qti_radio_ext_log_req(self, code, 0 /*serial*/);
+    qti_radio_ext_dump_request(req);
+    gbinder_remote_reply_unref(gbinder_client_transact_sync_reply(self->client,
+        code, req, &status));
+
+    DBG("setResponseFunctions status %d", status);
+    gbinder_local_request_unref(req);
+    return self;
+}
+
+/*==========================================================================*
+ * API
+ *==========================================================================*/
+
+
+QtiRadioExt*
+qti_radio_ext_new(
+    const char* dev,
+    const char* slot)
+{
+    QtiRadioExt* self = NULL;
+
+    GBinderServiceManager* sm = gbinder_servicemanager_new(dev);
+    if (sm) {
+        char* fqname = g_strconcat(QTI_RADIO_1_0, "/", slot, NULL);
+        GBinderRemoteObject* obj = /* autoreleased */
+            gbinder_servicemanager_get_service_sync(sm, fqname, NULL);
+
+        if (obj) {
+            DBG("Connected to %s", fqname);
+            self = qti_radio_ext_create(sm, obj, slot);
+        } else {
+            DBG("Failed to get %s", fqname);
+        }
+
+        g_free(fqname);
+        gbinder_servicemanager_unref(sm);
+    }
+
+    return self;
+}
+
+QtiRadioExt*
+qti_radio_ext_ref(
+    QtiRadioExt* self)
+{
+    if (G_LIKELY(self)) {
+        g_object_ref(self);
+    }
+    return self;
+}
+
+void
+qti_radio_ext_unref(
+    QtiRadioExt* self)
+{
+    if (G_LIKELY(self)) {
+        g_object_unref(self);
+    }
+}
+
+static
+void
+qti_radio_ext_set_reg_state_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    gbinder_writer_append_int32(args, va_arg(va, gint32));
+}
+
+// BINDER_EXT_IMS_REGISTRATION to QTI_RADIO_REG_STATE
+static
+QTI_RADIO_REG_STATE
+qti_radio_ext_reg_state(
+    BINDER_EXT_IMS_REGISTRATION state)
+{
+    switch (state) {
+    case BINDER_EXT_IMS_REGISTRATION_ON:
+        return QTI_RADIO_REG_STATE_REGISTERED;
+    case BINDER_EXT_IMS_REGISTRATION_OFF:
+        return QTI_RADIO_REG_STATE_NOT_REGISTERED;
+    default:
+        return QTI_RADIO_REG_STATE_INVALID;
+    }
+}
+
+
+guint
+qti_radio_ext_set_reg_state(
+    QtiRadioExt* self,
+    BINDER_EXT_IMS_REGISTRATION state,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    QTI_RADIO_REG_STATE reg_state = qti_radio_ext_reg_state(state);
+
+    DBG("Setting registration state %d", reg_state);
+
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_REQ_REG_CHANGE,
+        QTI_RADIO_RESP_REQ_REG_CHANGE,
+        qti_radio_ext_set_reg_state_args,
+        complete, destroy, user_data,
+        reg_state);
+}
+
+/*==========================================================================*
+ * Internals
+ *==========================================================================*/
+
+static
+void
+qti_radio_ext_finalize(
+    GObject* object)
+{
+    QtiRadioExt* self = THIS(object);
+
+    g_free(self->slot);
+    G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
+}
+
+static
+void
+qti_radio_ext_init(
+    QtiRadioExt* self)
+{
+    self->pool = gutil_idle_pool_new();
+    self->requests = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL,
+        qti_radio_ext_request_destroy);
+}
+
+static
+void
+qti_radio_ext_class_init(
+    QtiRadioExtClass* klass)
+{
+    G_OBJECT_CLASS(klass)->finalize = qti_radio_ext_finalize;
+    qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED] =
+        g_signal_new(SIGNAL_IMS_REG_STATUS_CHANGED_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            1, G_TYPE_UINT);
+}
+
+/*
+ * Local Variables:
+ * mode: C
+ * c-basic-offset: 4
+ * indent-tabs-mode: nil
+ * End:
+ */
