@@ -176,7 +176,7 @@ qti_ims_call_handle_call_info(
         BinderExtCallInfo* info = g_ptr_array_index(updated_calls, i);
         BinderExtCallInfo* call = qti_ims_call_info_find(self, info->call_id);
 
-        if (call->state == BINDER_EXT_CALL_STATE_END) {
+        if (call && call->state == BINDER_EXT_CALL_STATE_END) {
             g_signal_emit(THIS(user_data),
                 qti_ims_call_signals[SIGNAL_CALL_END], 0, call->call_id, "");
 
