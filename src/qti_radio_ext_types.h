@@ -199,49 +199,40 @@ typedef struct qti_radio_reg_info {
     GBinderHidlString error_message RADIO_ALIGNED(8);
     guint32 radio_tech RADIO_ALIGNED(4);
     GBinderHidlString uri RADIO_ALIGNED(8);
-} QtiRadioRegInfo;
+} RADIO_ALIGNED(8) QtiRadioRegInfo;
 
 /*
-struct CallInfo {
-    CallState state;
-    uint32_t index;
-    uint32_t toa;
-    bool hasIsMpty;
-    bool isMpty;
-    bool hasIsMT;
-    bool isMT;
-    uint32_t als;
-    bool hasIsVoice;
-    bool isVoice;
-    bool hasIsVoicePrivacy;
-    bool isVoicePrivacy;
-    string number;
-    uint32_t numberPresentation;
-    string name;
-    uint32_t namePresentation;
-    bool hasCallDetails;
+struct SipErrorInfo {
+    uint32_t errorCode;
+    string errorString;
 };
+
 */
 
-typedef struct qti_radio_call_info {
-    QTI_RADIO_CALL_STATE state RADIO_ALIGNED(4);
-    guint32 index RADIO_ALIGNED(4);
-    guint32 toa RADIO_ALIGNED(4);
-    gboolean has_is_mpty RADIO_ALIGNED(4);
-    gboolean is_mpty RADIO_ALIGNED(4);
-    gboolean has_is_mt RADIO_ALIGNED(4);
-    gboolean is_mt RADIO_ALIGNED(4);
-    guint32 als RADIO_ALIGNED(4);
-    gboolean has_is_voice RADIO_ALIGNED(4);
-    gboolean is_voice RADIO_ALIGNED(4);
-    gboolean has_is_voice_privacy RADIO_ALIGNED(4);
-    gboolean is_voice_privacy RADIO_ALIGNED(4);
-    GBinderHidlString number RADIO_ALIGNED(8);
-    guint32 number_presentation RADIO_ALIGNED(4);
-    GBinderHidlString name RADIO_ALIGNED(8);
-    guint32 name_presentation RADIO_ALIGNED(4);
-    gboolean has_call_details RADIO_ALIGNED(4);
-} QtiRadioCallInfo;
+typedef struct qti_radio_sip_error_info {
+    guint32 error_code RADIO_ALIGNED(4);
+    GBinderHidlString error_string RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioSipErrorInfo;
+
+/*
+struct CallFailCauseResponse {
+    CallFailCause failCause;
+    vec<uint8_t> errorinfo;
+    string networkErrorString;
+    bool hasErrorDetails;
+    SipErrorInfo errorDetails;
+};
+
+*/
+
+typedef struct qti_radio_call_fail_cause_response {
+    guint32 fail_cause RADIO_ALIGNED(4);
+    GBinderHidlVec errorinfo RADIO_ALIGNED(8);
+    GBinderHidlString network_error_string RADIO_ALIGNED(8);
+    guint8 has_error_details RADIO_ALIGNED(1);
+    QtiRadioSipErrorInfo error_details RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioCallFailCauseResponse;
+
 
 /*
 
@@ -303,6 +294,69 @@ typedef struct qti_radio_call_details {
     guint32 rtt_mode RADIO_ALIGNED(4);
     GBinderHidlString sip_alternate_uri RADIO_ALIGNED(8);
 } RADIO_ALIGNED(8) QtiRadioCallDetails;
+
+
+/*
+struct CallInfo {
+    CallState state;
+    uint32_t index;
+    uint32_t toa;
+    bool hasIsMpty;
+    bool isMpty;
+    bool hasIsMT;
+    bool isMT;
+    uint32_t als;
+    bool hasIsVoice;
+    bool isVoice;
+    bool hasIsVoicePrivacy;
+    bool isVoicePrivacy;
+    string number;
+    uint32_t numberPresentation;
+    string name;
+    uint32_t namePresentation;
+    bool hasCallDetails;
+    CallDetails callDetails;
+    bool hasFailCause;
+    CallFailCauseResponse failCause;
+    bool hasIsEncrypted;
+    bool isEncrypted;
+    bool hasIsCalledPartyRinging;
+    bool isCalledPartyRinging;
+    string historyInfo;
+    bool hasIsVideoConfSupported;
+    bool isVideoConfSupported;
+};
+*/
+
+typedef struct qti_radio_call_info {
+    QTI_RADIO_CALL_STATE state RADIO_ALIGNED(4);
+    guint32 index RADIO_ALIGNED(4);
+    guint32 toa RADIO_ALIGNED(4);
+    guint8 has_is_mpty RADIO_ALIGNED(1);
+    guint8 is_mpty RADIO_ALIGNED(1);
+    guint8 has_is_mt RADIO_ALIGNED(1);
+    guint8 is_mt RADIO_ALIGNED(1);
+    guint32 als RADIO_ALIGNED(4);
+    guint8 has_is_voice RADIO_ALIGNED(1);
+    guint8 is_voice RADIO_ALIGNED(1);
+    guint8 has_is_voice_privacy RADIO_ALIGNED(1);
+    guint8 is_voice_privacy RADIO_ALIGNED(1);
+    GBinderHidlString number RADIO_ALIGNED(8);
+    guint32 number_presentation RADIO_ALIGNED(4);
+    GBinderHidlString name RADIO_ALIGNED(8);
+    guint32 name_presentation RADIO_ALIGNED(4);
+    guint8 has_call_details RADIO_ALIGNED(1);
+    QtiRadioCallDetails call_details RADIO_ALIGNED(8);
+    guint8 has_fail_cause RADIO_ALIGNED(1);
+    QtiRadioCallFailCauseResponse fail_cause RADIO_ALIGNED(8);
+    guint8 has_is_encrypted RADIO_ALIGNED(1);
+    guint8 is_encrypted RADIO_ALIGNED(1);
+    guint8 has_is_called_party_ringing RADIO_ALIGNED(1);
+    guint8 is_called_party_ringing RADIO_ALIGNED(1);
+    GBinderHidlString history_info RADIO_ALIGNED(8);
+    guint8 has_is_video_conf_supported RADIO_ALIGNED(1);
+    guint8 is_video_conf_supported RADIO_ALIGNED(1);
+} RADIO_ALIGNED(8) QtiRadioCallInfo;
 
 /*
 struct DialRequest {
