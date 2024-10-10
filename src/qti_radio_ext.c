@@ -21,6 +21,7 @@
 
 #include <radio_types.h>
 #include <binder_ext_ims_impl.h>
+#include <binder_ext_call_impl.h>
 
 #include <ofono/log.h>
 #include <gbinder.h>
@@ -30,7 +31,7 @@
 #include <gutil_macros.h>
 
 #define DBG(fmt, ...) \
-    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, fmt, ##__VA_ARGS__)
+    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
 
 #define QTI_RADIO_CALL_TIMEOUT (3*1000) /* ms */
@@ -68,6 +69,7 @@ typedef void (*QtiRadioExtRequestHandlerFunc)(
 typedef void (*QtiRadioExtResultFunc)(
     QtiRadioExt* radio,
     int result,
+    GBinderReader* reader,
     void* user_data);
 
 struct qti_radio_ext_request {
@@ -88,10 +90,12 @@ typedef struct qti_radio_ext_result_request {
 
 enum qti_radio_ext_signal {
     SIGNAL_IMS_REG_STATUS_CHANGED,
+    SIGNAL_EXT_CALL_STATE_CHANGED,
     SIGNAL_COUNT
 };
 
-#define SIGNAL_IMS_REG_STATUS_CHANGED_NAME    "qti-radio-ext-ims-reg-status-changed"
+#define SIGNAL_IMS_REG_STATUS_CHANGED_NAME      "qti-radio-ext-ims-reg-status-changed"
+#define SIGNAL_EXT_CALL_STATE_CHANGED_NAME          "qti-radio-ext-call-state-changed"
 
 static guint qti_radio_ext_signals[SIGNAL_COUNT] = { 0 };
 
@@ -246,7 +250,6 @@ qti_radio_ext_dump_request(
     gutil_log_dump(log, level, "  ", data, size);
 }
 
-static
 const QtiRadioRegInfo*
 qti_radio_ext_read_ims_reg_status_info(
     QtiRadioExt* self,
@@ -291,6 +294,103 @@ qti_radio_ext_handle_ims_reg_status_report(
                     0, info->state);
 }
 
+static
+BINDER_EXT_CALL_STATE
+qti_ims_call_radio_state_to_state(
+    QTI_RADIO_CALL_STATE state)
+{
+    switch (state) {
+    case QTI_RADIO_CALL_STATE_INCOMING:
+        return BINDER_EXT_CALL_STATE_INCOMING;
+    case QTI_RADIO_CALL_STATE_ALERTING:
+        return BINDER_EXT_CALL_STATE_ALERTING;
+    case QTI_RADIO_CALL_STATE_HOLDING:
+        return BINDER_EXT_CALL_STATE_HOLDING;
+    case QTI_RADIO_CALL_STATE_WAITING:
+        return BINDER_EXT_CALL_STATE_WAITING;
+    case QTI_RADIO_CALL_STATE_ACTIVE:
+        return BINDER_EXT_CALL_STATE_ACTIVE;
+    case QTI_RADIO_CALL_STATE_END:
+        return BINDER_EXT_CALL_STATE_END;
+    case QTI_RADIO_CALL_STATE_DIALING:
+        return BINDER_EXT_CALL_STATE_DIALING;
+    default:
+        return BINDER_EXT_CALL_STATE_INVALID;
+    }
+}
+
+static
+GPtrArray*
+qti_radio_ext_read_call_state_info(
+    QtiRadioCallInfo* call_info_array,
+    gsize count)
+{
+    // array of QtiRadioCallInfo
+    GPtrArray* call_ext_info_array = g_ptr_array_new_with_free_func(g_free);
+
+    for (gsize i = 0; i < count; i++) {
+        QtiRadioCallInfo* call_info = &call_info_array[i];
+        
+        const gsize total = G_ALIGN8(sizeof(BinderExtCallInfo)) +
+            G_ALIGN8(call_info->number.len + 1) + G_ALIGN8(call_info->name.len + 1);
+        BinderExtCallInfo* dest = g_malloc0(total);
+
+        char* ptr_number = ((char*)dest) + G_ALIGN8(sizeof(BinderExtCallInfo));
+        char* ptr_name = ptr_number + G_ALIGN8(call_info->number.len + 1);
+
+        dest->call_id = call_info->index;
+        dest->state = qti_ims_call_radio_state_to_state(call_info->state);
+        dest->type = BINDER_EXT_CALL_TYPE_VOICE;
+        dest->flags = BINDER_EXT_CALL_FLAG_IMS | BINDER_EXT_CALL_FLAG_INCOMING;
+
+        dest->number = ptr_number;
+        dest->name = ptr_name;
+
+        memcpy(ptr_name, call_info->name.data.str, call_info->name.len);
+        ptr_name += G_ALIGN8(call_info->name.len + 1);
+
+        memcpy(ptr_number, call_info->number.data.str, call_info->number.len);
+        ptr_number += G_ALIGN8(call_info->number.len + 1);
+
+        g_ptr_array_add(call_ext_info_array, dest);
+
+        // print call_info
+        const char* number = call_info->number.data.str ? call_info->number.data.str : "";
+        const char* name = call_info->name.data.str ? call_info->name.data.str : "";
+        DBG("callInfoIndication state:%d index:%d name:%s number:%s",
+            call_info->state, call_info->index, name, number);
+
+    }
+
+    return call_ext_info_array;
+}
+
+static
+void
+qti_radio_ext_handle_call_state_indication(
+    QtiRadioExt* self,
+    const GBinderReader* args)
+{
+    /* callInfoIndication(vec<CallInfo> callList) */
+    QtiRadioCallInfo* call_infos;
+    GBinderReader reader;
+    gsize count;
+
+    gbinder_reader_copy(&reader, args);
+    call_infos = gbinder_reader_read_hidl_type_vec(&reader, QtiRadioCallInfo, &count);
+
+    if (call_infos) {
+        GPtrArray* call_info_ptr = qti_radio_ext_read_call_state_info(call_infos, count);
+
+        g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_CALL_STATE_CHANGED],
+                      0, call_info_ptr);
+
+        g_free(call_infos);
+    } else {
+        DBG("%s: failed to parse call state data", self->slot);
+    }
+}
+
 
 static
 GBinderLocalReply*
@@ -315,6 +415,9 @@ qti_radio_ext_indication(
         case QTI_RADIO_IND_REG_STATE_INDICATION:
             qti_radio_ext_handle_ims_reg_status_report(self, &args);
             return NULL;
+        case QTI_RADIO_IND_CALL_STATE_INDICATION:
+            qti_radio_ext_handle_call_state_indication(self, &args);
+            return NULL;
         }
     }
 
@@ -330,6 +433,16 @@ qti_radio_ext_add_ims_reg_status_handler(
 {
     return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
         SIGNAL_IMS_REG_STATUS_CHANGED_NAME, G_CALLBACK(handler), user_data) : 0;
+}
+
+gulong
+qti_radio_ext_add_call_state_handler(
+    QtiRadioExt* self,
+    QtiRadioExtCallStateFunc handler,
+    void* user_data)
+{
+    return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
+        SIGNAL_EXT_CALL_STATE_CHANGED_NAME, G_CALLBACK(handler), user_data) : 0;
 }
 
 static
@@ -391,7 +504,7 @@ qti_radio_ext_result_response(
         result = -1;
     }
     if (result_req->complete) {
-        result_req->complete(self, result, req->user_data);
+        result_req->complete(self, result, args, req->user_data);
     }
 }
 
@@ -487,6 +600,17 @@ qti_radio_ext_call(
         GBINDER_TX_FLAG_ONEWAY, req, reply, destroy, user_data);
 }
 
+void
+qti_radio_ext_cancel(
+    QtiRadioExt* self,
+    guint id)
+{
+    if (G_LIKELY(self) && G_LIKELY(id)) {
+        g_hash_table_remove(self->requests, KEY(id));
+    }
+}
+
+
 static
 gulong
 qti_radio_ext_submit_request(
@@ -541,6 +665,7 @@ qti_radio_ext_result_request_submit(
     }
     return 0;
 }
+
 
 static
 QtiRadioExt*
@@ -674,6 +799,269 @@ qti_radio_ext_set_reg_state(
         reg_state);
 }
 
+/* From ofono-binder-plugin's binder-util.c */
+static
+void
+binder_copy_hidl_string(
+    GBinderWriter* writer,
+    GBinderHidlString* dest,
+    const char* src)
+{
+    gssize len = src ? strlen(src) : 0;
+    dest->owns_buffer = TRUE;
+    if (len > 0) {
+        /* GBinderWriter takes ownership of the string contents */
+        dest->len = (guint32) len;
+        dest->data.str = gbinder_writer_memdup(writer, src, len + 1);
+    } else {
+        /* Replace NULL strings with empty strings */
+        dest->data.str = "";
+        dest->len = 0;
+    }
+}
+
+static
+void
+binder_append_hidl_string_with_parent(
+    GBinderWriter* writer,
+    const GBinderHidlString* str,
+    guint32 index,
+    guint32 offset)
+{
+    GBinderParent parent;
+
+    parent.index = index;
+    parent.offset = offset;
+
+    /* Strings are NULL-terminated, hence len + 1 */
+    gbinder_writer_append_buffer_object_with_parent(writer, str->data.str,
+        str->len + 1, &parent);
+}
+
+#define binder_append_hidl_string_data(writer,ptr,field,index) \
+    binder_append_hidl_string_with_parent(writer, &ptr->field, index, \
+        ((guint8*)(&ptr->field) - (guint8*)ptr))
+
+static
+void
+binder_append_hidl_vec_with_parent(
+    GBinderWriter* writer,
+    const GBinderHidlVec* vec,
+    guint32 index,
+    guint32 offset)
+{
+    GBinderParent parent;
+
+    parent.index = index;
+    parent.offset = offset;
+
+    gbinder_writer_append_buffer_object_with_parent(writer, vec->data.ptr,
+        vec->count, &parent);
+}
+
+#define binder_append_hidl_vec_data(writer,ptr,field,index) \
+    binder_append_hidl_vec_with_parent(writer, &ptr->field, index, \
+        ((guint8*)(&ptr->field) - (guint8*)ptr))
+
+#define CLIR_DEFAULT 0          // "use subscription default value"
+#define CLIR_INVOCATION 1       // (restrict CLI presentation)
+#define CLIR_SUPPRESSION 2    // (allow CLI presentation)
+
+
+static const GBinderWriterField qti_radio_dial_request_f[] = {
+    GBINDER_WRITER_FIELD_HIDL_STRING
+        (QtiRadioDialRequest, address),
+    GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+        (QtiRadioDialRequest, call_details.extras),
+    GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+        (QtiRadioDialRequest, call_details.local_ability),
+    GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+        (QtiRadioDialRequest, call_details.peer_ability),
+    GBINDER_WRITER_FIELD_HIDL_STRING
+        (QtiRadioDialRequest, call_details.sip_alternate_uri),
+    GBINDER_WRITER_FIELD_END()
+};
+static const GBinderWriterType qti_radio_dial_request_t = {
+    GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioDialRequest),
+    qti_radio_dial_request_f
+};
+
+
+static
+void
+qti_radio_ext_dial_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    QtiRadioDialRequest* dial_request_writer;
+
+    const char* number = va_arg(va, const char*);
+    gint32 clir = va_arg(va, gint32);
+
+    dial_request_writer = gbinder_writer_new0(args, QtiRadioDialRequest);
+
+    GBinderHidlVec* empty_vec1 = gbinder_writer_new0(args, GBinderHidlVec);
+    GBinderHidlVec* empty_vec2 = gbinder_writer_new0(args, GBinderHidlVec);
+    GBinderHidlVec* empty_vec3 = gbinder_writer_new0(args, GBinderHidlVec);
+
+    dial_request_writer->clir_mode = clir;
+    switch (clir)
+    {
+    case CLIR_SUPPRESSION:
+        dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_RESTRICTED;
+        break;
+    default:
+        dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_ALLOWED;
+        break;
+    }
+    dial_request_writer->call_details.call_type = QTI_RADIO_CALL_TYPE_VOICE;
+    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_CS;
+    dial_request_writer->call_details.extras_length = 0;
+    dial_request_writer->call_details.extras.count = 0;
+    dial_request_writer->call_details.extras.data.ptr = empty_vec1;
+    dial_request_writer->call_details.extras.owns_buffer = TRUE;
+    dial_request_writer->call_details.local_ability.count = 0;
+    dial_request_writer->call_details.local_ability.data.ptr = empty_vec2;
+    dial_request_writer->call_details.local_ability.owns_buffer = TRUE;
+    dial_request_writer->call_details.peer_ability.count = 0;
+    dial_request_writer->call_details.peer_ability.data.ptr = empty_vec3;
+    dial_request_writer->call_details.peer_ability.owns_buffer = TRUE;
+
+    dial_request_writer->call_details.call_substate = 0; // none
+    dial_request_writer->call_details.media_id = -1; // unknown
+    dial_request_writer->call_details.cause_code = 0; // none
+    dial_request_writer->call_details.rtt_mode = 0;
+
+    binder_copy_hidl_string(args, &dial_request_writer->address, number);
+    binder_copy_hidl_string(args, &dial_request_writer->call_details.sip_alternate_uri, NULL);
+
+    gbinder_writer_append_struct(&args, dial_request_writer,
+            &qti_radio_dial_request_t, NULL);
+
+    DBG("Dialing in args New %s", number);
+}
+
+                /*
+// dail
+static
+void
+qti_radio_ext_dial_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    GBinderParent parent;
+    QtiRadioDialRequest* dial_request_writer;
+
+    const char* number = va_arg(va, const char*);
+    gint32 clir = va_arg(va, gint32);
+
+    dial_request_writer = gbinder_writer_new0(args, QtiRadioDialRequest);
+
+    GBinderHidlVec* empty_vec1 = gbinder_writer_new0(args, GBinderHidlVec);
+    GBinderHidlVec* empty_vec2 = gbinder_writer_new0(args, GBinderHidlVec);
+    GBinderHidlVec* empty_vec3 = gbinder_writer_new0(args, GBinderHidlVec);
+
+    dial_request_writer->clir_mode = clir;
+    switch (clir)
+    {
+    case CLIR_SUPPRESSION:
+        dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_RESTRICTED;
+        break;
+    default:
+        dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_ALLOWED;
+        break;
+    }
+    dial_request_writer->call_details.call_type = QTI_RADIO_CALL_TYPE_VOICE;
+    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_CS;
+    dial_request_writer->call_details.extras_length = 0;
+    dial_request_writer->call_details.extras.count = 0;
+    dial_request_writer->call_details.extras.data.ptr = empty_vec1;
+    dial_request_writer->call_details.extras.owns_buffer = TRUE;
+    dial_request_writer->call_details.local_ability.count = 0;
+    dial_request_writer->call_details.local_ability.data.ptr = empty_vec2;
+    dial_request_writer->call_details.local_ability.owns_buffer = TRUE;
+    dial_request_writer->call_details.peer_ability.count = 0;
+    dial_request_writer->call_details.peer_ability.data.ptr = empty_vec3;
+    dial_request_writer->call_details.peer_ability.owns_buffer = TRUE;
+
+    dial_request_writer->call_details.call_substate = 0; // none
+    dial_request_writer->call_details.media_id = -1; // unknown
+    dial_request_writer->call_details.cause_code = 0; // none
+    dial_request_writer->call_details.rtt_mode = 0;
+
+    binder_copy_hidl_string(args, &dial_request_writer->address, number);
+    binder_copy_hidl_string(args, &dial_request_writer->call_details.sip_alternate_uri, NULL);
+
+    /* Write the parent structure 
+    parent.index = gbinder_writer_append_buffer_object(args, dial_request_writer,
+        sizeof(*dial_request_writer));
+
+    /* Write the string data 
+    binder_append_hidl_string_data(args, dial_request_writer, address, parent.index);
+
+    // find right index after 
+    guint32 index = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.call_type);
+    binder_append_hidl_string_data(args, dial_request_writer, call_details.sip_alternate_uri, parent.index);
+    binder_append_hidl_vec_data(args, dial_request_writer, call_details.extras, parent.index);
+
+    /* UUS information is empty but we still need to write a buffer 
+    //parent.offset = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.extras.data.ptr);
+    //gbinder_writer_append_buffer_object_with_parent(args, NULL, 0, &parent);
+
+    //parent.offset = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.local_ability.data.ptr);
+    //gbinder_writer_append_buffer_object_with_parent(args, NULL, 0, &parent);
+
+    //parent.offset = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.peer_ability.data.ptr);
+    //gbinder_writer_append_buffer_object_with_parent(args, NULL, 0, &parent);
+
+    DBG("Dialing in args YAY %s", number);
+}
+*/
+
+guint
+qti_radio_ext_dial(
+    QtiRadioExt* self,
+    const char* number,
+    BINDER_EXT_TOA toa,
+    BINDER_EXT_CALL_CLIR clir,
+    BINDER_EXT_CALL_DIAL_FLAGS flags,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_DAIL,
+        QTI_RADIO_RESP_DAIL,
+        qti_radio_ext_dial_args,
+        complete, destroy, user_data,
+        number, clir);
+}
+
+// GET_IMS_REG_STATE
+
+static
+void
+qti_radio_ext_get_ims_reg_state_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    // empty
+}
+
+guint
+qti_radio_ext_get_ims_reg_state(
+    QtiRadioExt* self,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_GET_IMS_REG_STATE,
+        QTI_RADIO_RESP_GET_IMS_REG_STATE,
+        qti_radio_ext_get_ims_reg_state_args,
+        complete, destroy, user_data);
+}
+
 /*==========================================================================*
  * Internals
  *==========================================================================*/
@@ -709,6 +1097,10 @@ qti_radio_ext_class_init(
         g_signal_new(SIGNAL_IMS_REG_STATUS_CHANGED_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
             1, G_TYPE_UINT);
+    qti_radio_ext_signals[SIGNAL_EXT_CALL_STATE_CHANGED] =
+        g_signal_new(SIGNAL_EXT_CALL_STATE_CHANGED_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            1, G_TYPE_PTR_ARRAY);
 }
 
 /*

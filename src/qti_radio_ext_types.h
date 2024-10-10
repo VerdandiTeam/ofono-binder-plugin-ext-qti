@@ -86,6 +86,103 @@ typedef enum qti_radio_service_status {
 } QTI_RADIO_SERVICE_STATUS;
 
 /*
+enum CallState : int32_t {
+    CALL_ACTIVE,
+    CALL_HOLDING,
+    CALL_DIALING,
+    CALL_ALERTING,
+    CALL_INCOMING,
+    CALL_WAITING,
+    CALL_END,
+    CALL_STATE_INVALID,
+};
+*/
+
+typedef enum qti_radio_call_state {
+    QTI_RADIO_CALL_STATE_ACTIVE = 0,
+    QTI_RADIO_CALL_STATE_HOLDING = 1,
+    QTI_RADIO_CALL_STATE_DIALING = 2,
+    QTI_RADIO_CALL_STATE_ALERTING = 3,
+    QTI_RADIO_CALL_STATE_INCOMING = 4,
+    QTI_RADIO_CALL_STATE_WAITING = 5,
+    QTI_RADIO_CALL_STATE_END = 6,
+    QTI_RADIO_CALL_STATE_INVALID = 7,
+} QTI_RADIO_CALL_STATE;
+
+/*
+enum IpPresentation : int32_t {
+    IP_PRESENTATION_NUM_ALLOWED,
+    IP_PRESENTATION_NUM_RESTRICTED,
+    IP_PRESENTATION_NUM_DEFAULT,
+    IP_PRESENTATION_INVALID,
+};
+
+*/
+
+typedef enum qti_radio_ip_presentation {
+    QTI_RADIO_IP_PRESENTATION_NUM_ALLOWED = 0,
+    QTI_RADIO_IP_PRESENTATION_NUM_RESTRICTED = 1,
+    QTI_RADIO_IP_PRESENTATION_NUM_DEFAULT = 2,
+    QTI_RADIO_IP_PRESENTATION_INVALID = 3,
+} QTI_RADIO_IP_PRESENTATION;
+
+/*
+enum CallType : int32_t {
+    CALL_TYPE_VOICE,
+    CALL_TYPE_VT_TX,
+    CALL_TYPE_VT_RX,
+    CALL_TYPE_VT,
+    CALL_TYPE_VT_NODIR,
+    CALL_TYPE_CS_VS_TX,
+    CALL_TYPE_CS_VS_RX,
+    CALL_TYPE_PS_VS_TX,
+    CALL_TYPE_PS_VS_RX,
+    CALL_TYPE_UNKNOWN,
+    CALL_TYPE_SMS,
+    CALL_TYPE_UT,
+    CALL_TYPE_INVALID,
+};
+
+*/
+
+typedef enum qti_radio_call_type {
+    QTI_RADIO_CALL_TYPE_VOICE = 0,
+    QTI_RADIO_CALL_TYPE_VT_TX = 1,
+    QTI_RADIO_CALL_TYPE_VT_RX = 2,
+    QTI_RADIO_CALL_TYPE_VT = 3,
+    QTI_RADIO_CALL_TYPE_VT_NODIR = 4,
+    QTI_RADIO_CALL_TYPE_CS_VS_TX = 5,
+    QTI_RADIO_CALL_TYPE_CS_VS_RX = 6,
+    QTI_RADIO_CALL_TYPE_PS_VS_TX = 7,
+    QTI_RADIO_CALL_TYPE_PS_VS_RX = 8,
+    QTI_RADIO_CALL_TYPE_UNKNOWN = 9,
+    QTI_RADIO_CALL_TYPE_SMS = 10,
+    QTI_RADIO_CALL_TYPE_UT = 11,
+    QTI_RADIO_CALL_TYPE_INVALID = 12,
+} QTI_RADIO_CALL_TYPE;
+
+/*
+
+enum CallDomain : int32_t {
+    CALL_DOMAIN_UNKNOWN,
+    CALL_DOMAIN_CS,
+    CALL_DOMAIN_PS,
+    CALL_DOMAIN_AUTOMATIC,
+    CALL_DOMAIN_NOT_SET,
+    CALL_DOMAIN_INVALID,
+};
+*/
+
+typedef enum qti_radio_call_domain {
+    QTI_RADIO_CALL_DOMAIN_UNKNOWN = 0,
+    QTI_RADIO_CALL_DOMAIN_CS = 1,
+    QTI_RADIO_CALL_DOMAIN_PS = 2,
+    QTI_RADIO_CALL_DOMAIN_AUTOMATIC = 3,
+    QTI_RADIO_CALL_DOMAIN_NOT_SET = 4,
+    QTI_RADIO_CALL_DOMAIN_INVALID = 5,
+} QTI_RADIO_CALL_DOMAIN;
+
+/*
 
 struct RegistrationInfo {
     RegState state;
@@ -103,6 +200,141 @@ typedef struct qti_radio_reg_info {
     guint32 radio_tech RADIO_ALIGNED(4);
     GBinderHidlString uri RADIO_ALIGNED(8);
 } QtiRadioRegInfo;
+
+/*
+struct CallInfo {
+    CallState state;
+    uint32_t index;
+    uint32_t toa;
+    bool hasIsMpty;
+    bool isMpty;
+    bool hasIsMT;
+    bool isMT;
+    uint32_t als;
+    bool hasIsVoice;
+    bool isVoice;
+    bool hasIsVoicePrivacy;
+    bool isVoicePrivacy;
+    string number;
+    uint32_t numberPresentation;
+    string name;
+    uint32_t namePresentation;
+    bool hasCallDetails;
+};
+*/
+
+typedef struct qti_radio_call_info {
+    QTI_RADIO_CALL_STATE state RADIO_ALIGNED(4);
+    guint32 index RADIO_ALIGNED(4);
+    guint32 toa RADIO_ALIGNED(4);
+    gboolean has_is_mpty RADIO_ALIGNED(4);
+    gboolean is_mpty RADIO_ALIGNED(4);
+    gboolean has_is_mt RADIO_ALIGNED(4);
+    gboolean is_mt RADIO_ALIGNED(4);
+    guint32 als RADIO_ALIGNED(4);
+    gboolean has_is_voice RADIO_ALIGNED(4);
+    gboolean is_voice RADIO_ALIGNED(4);
+    gboolean has_is_voice_privacy RADIO_ALIGNED(4);
+    gboolean is_voice_privacy RADIO_ALIGNED(4);
+    GBinderHidlString number RADIO_ALIGNED(8);
+    guint32 number_presentation RADIO_ALIGNED(4);
+    GBinderHidlString name RADIO_ALIGNED(8);
+    guint32 name_presentation RADIO_ALIGNED(4);
+    gboolean has_call_details RADIO_ALIGNED(4);
+} QtiRadioCallInfo;
+
+/*
+
+struct ServiceStatusInfo {
+    bool hasIsValid;
+    bool isValid;
+    ServiceType type;
+    CallType callType;
+    StatusType status;
+    vec<uint8_t> userdata;
+    uint32_t restrictCause;
+    vec<StatusForAccessTech> accTechStatus;
+    RttMode rttMode;
+};
+    
+    */
+
+typedef struct qti_radio_service_status_info {
+    gboolean has_is_valid RADIO_ALIGNED(4);
+    gboolean is_valid RADIO_ALIGNED(4);
+    guint32 type RADIO_ALIGNED(4);
+    guint32 call_type RADIO_ALIGNED(4);
+    guint32 status RADIO_ALIGNED(4);
+    GBinderHidlVec userdata RADIO_ALIGNED(8);
+    guint32 restrict_cause RADIO_ALIGNED(4);
+    GBinderHidlVec acc_tech_status RADIO_ALIGNED(8);
+    guint32 rtt_mode RADIO_ALIGNED(4);
+} QtiRadioServiceStatusInfo;
+
+/*
+struct CallDetails {
+    CallType callType;
+    CallDomain callDomain;
+    uint32_t extrasLength;
+    vec<string> extras;
+
+    vec<ServiceStatusInfo> localAbility;
+    vec<ServiceStatusInfo> peerAbility;
+    uint32_t callSubstate;
+    uint32_t mediaId;
+    uint32_t causeCode;
+    RttMode rttMode;
+    string sipAlternateUri;
+};
+*/
+
+typedef struct qti_radio_call_details {
+    guint32 call_type RADIO_ALIGNED(4);
+    guint32 call_domain RADIO_ALIGNED(4);
+    guint32 extras_length RADIO_ALIGNED(4);
+
+    GBinderHidlVec extras RADIO_ALIGNED(8);
+    GBinderHidlVec local_ability RADIO_ALIGNED(8);
+    GBinderHidlVec peer_ability RADIO_ALIGNED(8);
+
+    guint32 call_substate RADIO_ALIGNED(4);
+    guint32 media_id RADIO_ALIGNED(4);
+    guint32 cause_code RADIO_ALIGNED(4);
+    guint32 rtt_mode RADIO_ALIGNED(4);
+    GBinderHidlString sip_alternate_uri RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioCallDetails;
+
+/*
+struct DialRequest {
+    string address;
+    uint32_t clirMode;
+    IpPresentation presentation;
+    bool hasCallDetails;
+    CallDetails callDetails;
+    bool hasIsConferenceUri;
+    bool isConferenceUri;
+    bool hasIsCallPull;
+    bool isCallPull;
+    bool hasIsEncrypted;
+    bool isEncrypted;
+};
+
+*/
+
+typedef struct qti_radio_dial_request {
+    GBinderHidlString address RADIO_ALIGNED(8);
+    guint32 clir_mode RADIO_ALIGNED(4);
+    guint32 presentation RADIO_ALIGNED(4);
+    guint8 has_call_details RADIO_ALIGNED(1);
+    QtiRadioCallDetails call_details RADIO_ALIGNED(8);
+    guint8 has_is_conference_uri RADIO_ALIGNED(1);
+    guint8 is_conference_uri RADIO_ALIGNED(1);
+    guint8 has_is_call_pull RADIO_ALIGNED(1);
+    guint8 is_call_pull RADIO_ALIGNED(1);
+    guint8 has_is_encrypted RADIO_ALIGNED(1);
+    guint8 is_encrypted RADIO_ALIGNED(1);
+} RADIO_ALIGNED(8) QtiRadioDialRequest;
+
 
 /* c(req, resp, callName, CALL_NAME) */
 #define QTI_RADIO_EXT_IMS_CALL_1_0(c) \

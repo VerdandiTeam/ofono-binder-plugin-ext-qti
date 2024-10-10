@@ -48,7 +48,8 @@
 #include <gbinder.h>
 
 #define DBG(fmt, ...) \
-    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, fmt, ##__VA_ARGS__)
+    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
+
 
 typedef GObjectClass QtiImsClass;
 typedef struct qti_ims {
@@ -118,6 +119,7 @@ void
 qti_ims_result_request_complete(
     QtiRadioExt* radio_ext,
     int result,
+    GBinderReader* reader,
     void* user_data)
 {
     QtiImsResultRequest* req = user_data;
@@ -167,6 +169,41 @@ qti_ims_reg_status_changed(
         self->ims_state = ims_state;
         g_signal_emit(self, qti_ims_signals[SIGNAL_STATE_CHANGED], 0);
     }
+}
+
+
+static
+void
+qti_ims_reg_status_response(
+    QtiRadioExt* radio_ext,
+    int result,
+    GBinderReader* reader,
+    void* user_data)
+{
+    DBG("qti_ims_reg_status_response");
+    QtiImsResultRequest* req = user_data;
+
+    QTI_RADIO_REG_STATE state = QTI_RADIO_REG_STATE_INVALID;
+    GBinderReader reader_copy;
+
+    gbinder_reader_copy(&reader_copy, reader);
+    const QtiRadioRegInfo* info = qti_radio_ext_read_ims_reg_status_info(radio_ext, &reader_copy);
+
+    if (info) {
+        state = info->state;
+    }
+
+    const char *uri = info->uri.data.str ? info->uri.data.str : "";
+    const char *error_msg = info->error_message.data.str ? info->error_message.data.str : "";
+    DBG("%s: QtiRadioRegInfo response state:%d radiotech:%d"
+        " error_code:%d\n"
+        " uri:%s error_msg:%s",
+        info->state,
+        info->radio_tech,
+        info->error_code,
+        uri, error_msg);
+
+    qti_ims_reg_status_changed(radio_ext, state, req->ext);
 }
 
 /*==========================================================================*
@@ -250,6 +287,7 @@ qti_ims_iface_init(
     BinderExtImsInterface* iface)
 {
     iface->version = BINDER_EXT_IMS_INTERFACE_VERSION;
+    iface->flags = BINDER_EXT_IMS_INTERFACE_FLAG_VOICE_SUPPORT;
     iface->get_state = qti_ims_get_state;
     iface->set_registration = qti_ims_set_registration;
     iface->cancel = qti_ims_cancel;
@@ -273,11 +311,18 @@ qti_ims_new(
      */
     self->slot = g_strdup(slot);
     self->radio_ext = qti_radio_ext_ref(radio_ext);
-    self->ims_state = BINDER_EXT_IMS_STATE_NOT_REGISTERED;
+    self->ims_state = BINDER_EXT_IMS_STATE_UNKNOWN;
 
     if (self->radio_ext) {
         qti_radio_ext_add_ims_reg_status_handler(self->radio_ext,
             qti_ims_reg_status_changed, self);
+
+        // get updated state
+        //QtiImsResultRequest* req = qti_ims_result_request_new(self,
+        //    complete, destroy, user_data);
+        //qti_radio_ext_get_ims_reg_state(self->radio_ext,
+        //    qti_ims_reg_status_response,
+        //    qti_ims_result_request_destroy, NULL);
     }
 
     return BINDER_EXT_IMS(self);
