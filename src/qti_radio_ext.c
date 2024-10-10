@@ -867,26 +867,6 @@ binder_append_hidl_vec_with_parent(
 #define CLIR_INVOCATION 1       // (restrict CLI presentation)
 #define CLIR_SUPPRESSION 2    // (allow CLI presentation)
 
-
-static const GBinderWriterField qti_radio_dial_request_f[] = {
-    GBINDER_WRITER_FIELD_HIDL_STRING
-        (QtiRadioDialRequest, address),
-    GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
-        (QtiRadioDialRequest, call_details.extras),
-    GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
-        (QtiRadioDialRequest, call_details.local_ability),
-    GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
-        (QtiRadioDialRequest, call_details.peer_ability),
-    GBINDER_WRITER_FIELD_HIDL_STRING
-        (QtiRadioDialRequest, call_details.sip_alternate_uri),
-    GBINDER_WRITER_FIELD_END()
-};
-static const GBinderWriterType qti_radio_dial_request_t = {
-    GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioDialRequest),
-    qti_radio_dial_request_f
-};
-
-
 static
 void
 qti_radio_ext_dial_args(
@@ -897,6 +877,24 @@ qti_radio_ext_dial_args(
 
     const char* number = va_arg(va, const char*);
     gint32 clir = va_arg(va, gint32);
+
+    static const GBinderWriterField qti_radio_dial_request_f[] = {
+        GBINDER_WRITER_FIELD_HIDL_STRING
+            (QtiRadioDialRequest, address),
+        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+            (QtiRadioDialRequest, call_details.extras),
+        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+            (QtiRadioDialRequest, call_details.local_ability),
+        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+            (QtiRadioDialRequest, call_details.peer_ability),
+        GBINDER_WRITER_FIELD_HIDL_STRING
+            (QtiRadioDialRequest, call_details.sip_alternate_uri),
+        GBINDER_WRITER_FIELD_END()
+    };
+    static const GBinderWriterType qti_radio_dial_request_t = {
+        GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioDialRequest),
+        qti_radio_dial_request_f
+    };
 
     dial_request_writer = gbinder_writer_new0(args, QtiRadioDialRequest);
 
@@ -935,7 +933,7 @@ qti_radio_ext_dial_args(
     binder_copy_hidl_string(args, &dial_request_writer->address, number);
     binder_copy_hidl_string(args, &dial_request_writer->call_details.sip_alternate_uri, NULL);
 
-    gbinder_writer_append_struct(&args, dial_request_writer,
+    gbinder_writer_append_struct(args, dial_request_writer,
             &qti_radio_dial_request_t, NULL);
 
     DBG("Dialing in args New %s", number);
