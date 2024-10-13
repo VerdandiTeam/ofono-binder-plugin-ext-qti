@@ -197,6 +197,15 @@ qti_ims_call_handle_call_info(
                   qti_ims_call_signals[SIGNAL_CALL_STATE_CHANGED], 0);
 }
 
+static
+void
+qti_ims_call_handle_ring(
+    QtiRadioExt* radio,
+    void* user_data)
+{
+    g_signal_emit(THIS(user_data),
+        qti_ims_call_signals[SIGNAL_CALL_RING], 0);
+}
 
 static
 const BinderExtCallInfo* const*
@@ -425,6 +434,8 @@ qti_ims_call_new(
 
         qti_radio_ext_add_call_state_handler(radio_ext,
             qti_ims_call_handle_call_info, self);
+        qti_radio_ext_add_ring_handler(radio_ext,
+            qti_ims_call_handle_ring, self);
 
         return BINDER_EXT_CALL(self);
     }

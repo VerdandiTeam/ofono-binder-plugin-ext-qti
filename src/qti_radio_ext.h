@@ -103,6 +103,12 @@ qti_radio_ext_add_call_state_handler(
     QtiRadioExtCallStateFunc handler,
     void* user_data);
 
+gulong
+qti_radio_ext_add_ring_handler(
+    QtiRadioExt* self,
+    QtiRadioExtRingFunc handler,
+    void* user_data);
+
 #endif /* QTI_RADIO_EXT_H */
 
 /*

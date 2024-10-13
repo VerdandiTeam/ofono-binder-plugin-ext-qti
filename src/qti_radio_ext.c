@@ -91,11 +91,13 @@ typedef struct qti_radio_ext_result_request {
 enum qti_radio_ext_signal {
     SIGNAL_IMS_REG_STATUS_CHANGED,
     SIGNAL_EXT_CALL_STATE_CHANGED,
+    SIGNAL_EXT_ON_RING,
     SIGNAL_COUNT
 };
 
 #define SIGNAL_IMS_REG_STATUS_CHANGED_NAME      "qti-radio-ext-ims-reg-status-changed"
 #define SIGNAL_EXT_CALL_STATE_CHANGED_NAME          "qti-radio-ext-call-state-changed"
+#define SIGNAL_EXT_ON_RING_NAME                     "qti-radio-ext-on-ring"
 
 static guint qti_radio_ext_signals[SIGNAL_COUNT] = { 0 };
 
@@ -461,9 +463,11 @@ qti_radio_ext_indication(
         case QTI_RADIO_IND_CALL_STATE_INDICATION:
             qti_radio_ext_handle_call_state_indication(self, &args);
             return NULL;
+        case QTI_RADIO_IND_RING_INDICATION:
+            g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_RING], 0);
+            return NULL;
         }
     }
-
 
     return NULL;
 }
@@ -486,6 +490,16 @@ qti_radio_ext_add_call_state_handler(
 {
     return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
         SIGNAL_EXT_CALL_STATE_CHANGED_NAME, G_CALLBACK(handler), user_data) : 0;
+}
+
+gulong
+qti_radio_ext_add_ring_handler(
+    QtiRadioExt* self,
+    QtiRadioExtRingFunc handler,
+    void* user_data)
+{
+    return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
+        SIGNAL_EXT_ON_RING_NAME, G_CALLBACK(handler), user_data) : 0;
 }
 
 static
@@ -1142,6 +1156,10 @@ qti_radio_ext_class_init(
         g_signal_new(SIGNAL_EXT_CALL_STATE_CHANGED_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
             1, G_TYPE_PTR_ARRAY);
+    qti_radio_ext_signals[SIGNAL_EXT_ON_RING] =
+        g_signal_new(SIGNAL_EXT_ON_RING_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            0);
 }
 
 /*
