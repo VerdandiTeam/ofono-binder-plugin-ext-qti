@@ -365,6 +365,36 @@ qti_ims_call_radio_state_to_state(
 }
 
 static
+BinderExtCallInfo*
+mtk_ims_call_info_new(
+    guint call_id,
+    BINDER_EXT_CALL_STATE state,
+    GBinderHidlString number,
+    GBinderHidlString name
+    )
+{
+    const gsize number_len = number.len;
+    const gsize total = G_ALIGN8(sizeof(BinderExtCallInfo)) +
+        G_ALIGN8(number_len + 1);
+    BinderExtCallInfo* dest = g_malloc0(total);
+    char* ptr = ((char*)dest) + G_ALIGN8(sizeof(BinderExtCallInfo));
+
+    dest->call_id = call_id;
+
+    // do we need name?
+    dest->name = NULL;
+    dest->state = qti_ims_call_radio_state_to_state(state);
+    dest->type = BINDER_EXT_CALL_TYPE_VOICE;
+    dest->flags = BINDER_EXT_CALL_FLAG_IMS | BINDER_EXT_CALL_FLAG_INCOMING;
+
+    dest->number = ptr;
+    memcpy(ptr, number.data.str, number_len);
+    ptr += G_ALIGN8(number_len + 1);
+
+    return dest;
+}
+
+static
 GPtrArray*
 qti_radio_ext_read_call_state_info(
     QtiRadioCallInfo* call_info_array,
@@ -375,40 +405,14 @@ qti_radio_ext_read_call_state_info(
 
     for (gsize i = 0; i < count; i++) {
         QtiRadioCallInfo* call_info = &call_info_array[i];
+        BinderExtCallInfo* dest = mtk_ims_call_info_new(call_info->index, 0, call_info->number, call_info->name);
         
-        const gsize total = G_ALIGN8(sizeof(BinderExtCallInfo)) +
-            G_ALIGN8(call_info->number.len + 1) + G_ALIGN8(call_info->name.len + 1);
-        BinderExtCallInfo* dest = g_malloc0(total);
-
-        char* ptr_number = ((char*)dest) + G_ALIGN8(sizeof(BinderExtCallInfo));
-        char* ptr_name = ptr_number + G_ALIGN8(call_info->number.len + 1);
-
-        dest->call_id = call_info->index;
-        dest->state = qti_ims_call_radio_state_to_state(call_info->state);
-        dest->type = BINDER_EXT_CALL_TYPE_VOICE;
-        dest->flags = BINDER_EXT_CALL_FLAG_IMS | BINDER_EXT_CALL_FLAG_INCOMING;
-
-        dest->number = ptr_number;
-        dest->name = ptr_name;
-
-        memcpy(ptr_name, call_info->name.data.str, call_info->name.len);
-        ptr_name += G_ALIGN8(call_info->name.len + 1);
-
-        memcpy(ptr_number, call_info->number.data.str, call_info->number.len);
-        ptr_number += G_ALIGN8(call_info->number.len + 1);
-
         g_ptr_array_add(call_ext_info_array, dest);
-
-        // print call_info
-        const char* number = call_info->number.data.str ? call_info->number.data.str : "";
-        const char* name = call_info->name.data.str ? call_info->name.data.str : "";
-        DBG("callInfoIndication state:%d index:%d name:%s number:%s",
-            call_info->state, call_info->index, name, number);
-
     }
 
     return call_ext_info_array;
 }
+
 
 static
 void
@@ -429,8 +433,6 @@ qti_radio_ext_handle_call_state_indication(
 
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_CALL_STATE_CHANGED],
                       0, call_info_ptr);
-
-        g_free(call_infos);
     } else {
         DBG("%s: failed to parse call state data", self->slot);
     }
@@ -840,7 +842,6 @@ qti_radio_ext_set_reg_state_args(
     gbinder_writer_append_int32(args, va_arg(va, gint32));
 }
 
-// BINDER_EXT_IMS_REGISTRATION to QTI_RADIO_REG_STATE
 static
 QTI_RADIO_REG_STATE
 qti_radio_ext_reg_state(
@@ -900,53 +901,6 @@ binder_copy_hidl_string(
 
 static
 void
-binder_append_hidl_string_with_parent(
-    GBinderWriter* writer,
-    const GBinderHidlString* str,
-    guint32 index,
-    guint32 offset)
-{
-    GBinderParent parent;
-
-    parent.index = index;
-    parent.offset = offset;
-
-    /* Strings are NULL-terminated, hence len + 1 */
-    gbinder_writer_append_buffer_object_with_parent(writer, str->data.str,
-        str->len + 1, &parent);
-}
-
-#define binder_append_hidl_string_data(writer,ptr,field,index) \
-    binder_append_hidl_string_with_parent(writer, &ptr->field, index, \
-        ((guint8*)(&ptr->field) - (guint8*)ptr))
-
-static
-void
-binder_append_hidl_vec_with_parent(
-    GBinderWriter* writer,
-    const GBinderHidlVec* vec,
-    guint32 index,
-    guint32 offset)
-{
-    GBinderParent parent;
-
-    parent.index = index;
-    parent.offset = offset;
-
-    gbinder_writer_append_buffer_object_with_parent(writer, vec->data.ptr,
-        vec->count, &parent);
-}
-
-#define binder_append_hidl_vec_data(writer,ptr,field,index) \
-    binder_append_hidl_vec_with_parent(writer, &ptr->field, index, \
-        ((guint8*)(&ptr->field) - (guint8*)ptr))
-
-#define CLIR_DEFAULT 0          // "use subscription default value"
-#define CLIR_INVOCATION 1       // (restrict CLI presentation)
-#define CLIR_SUPPRESSION 2    // (allow CLI presentation)
-
-static
-void
 qti_radio_ext_dial_args(
     GBinderWriter* args,
     va_list va)
@@ -954,7 +908,10 @@ qti_radio_ext_dial_args(
     QtiRadioDialRequest* dial_request_writer;
 
     const char* number = va_arg(va, const char*);
-    gint32 clir = va_arg(va, gint32);
+    //gint32 clir = va_arg(va, gint32);
+
+    // for some reason, clir from binder is wrong, so we use default
+    gint32 clir = RADIO_CLIR_DEFAULT; 
 
     static const GBinderWriterField qti_radio_dial_request_f[] = {
         GBINDER_WRITER_FIELD_HIDL_STRING
@@ -983,22 +940,26 @@ qti_radio_ext_dial_args(
     dial_request_writer->clir_mode = clir;
     switch (clir)
     {
-    case CLIR_SUPPRESSION:
+    case RADIO_CLIR_SUPPRESSION:
         dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_RESTRICTED;
         break;
     default:
         dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_ALLOWED;
         break;
     }
+    
     dial_request_writer->call_details.call_type = QTI_RADIO_CALL_TYPE_VOICE;
-    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_CS;
+    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_UNKNOWN;
     dial_request_writer->call_details.extras_length = 0;
+
     dial_request_writer->call_details.extras.count = 0;
     dial_request_writer->call_details.extras.data.ptr = empty_vec1;
     dial_request_writer->call_details.extras.owns_buffer = TRUE;
+
     dial_request_writer->call_details.local_ability.count = 0;
     dial_request_writer->call_details.local_ability.data.ptr = empty_vec2;
     dial_request_writer->call_details.local_ability.owns_buffer = TRUE;
+
     dial_request_writer->call_details.peer_ability.count = 0;
     dial_request_writer->call_details.peer_ability.data.ptr = empty_vec3;
     dial_request_writer->call_details.peer_ability.owns_buffer = TRUE;
@@ -1007,6 +968,14 @@ qti_radio_ext_dial_args(
     dial_request_writer->call_details.media_id = -1; // unknown
     dial_request_writer->call_details.cause_code = 0; // none
     dial_request_writer->call_details.rtt_mode = 0;
+
+    dial_request_writer->has_call_details = TRUE;
+    dial_request_writer->has_is_conference_uri = FALSE;
+    dial_request_writer->is_conference_uri = FALSE;
+    dial_request_writer->has_is_call_pull = FALSE;
+    dial_request_writer->is_call_pull = FALSE;
+    dial_request_writer->has_is_encrypted = FALSE;
+    dial_request_writer->is_encrypted = FALSE;
 
     binder_copy_hidl_string(args, &dial_request_writer->address, number);
     binder_copy_hidl_string(args, &dial_request_writer->call_details.sip_alternate_uri, NULL);
@@ -1016,83 +985,6 @@ qti_radio_ext_dial_args(
 
     DBG("Dialing in args New %s", number);
 }
-
-                /*
-// dail
-static
-void
-qti_radio_ext_dial_args(
-    GBinderWriter* args,
-    va_list va)
-{
-    GBinderParent parent;
-    QtiRadioDialRequest* dial_request_writer;
-
-    const char* number = va_arg(va, const char*);
-    gint32 clir = va_arg(va, gint32);
-
-    dial_request_writer = gbinder_writer_new0(args, QtiRadioDialRequest);
-
-    GBinderHidlVec* empty_vec1 = gbinder_writer_new0(args, GBinderHidlVec);
-    GBinderHidlVec* empty_vec2 = gbinder_writer_new0(args, GBinderHidlVec);
-    GBinderHidlVec* empty_vec3 = gbinder_writer_new0(args, GBinderHidlVec);
-
-    dial_request_writer->clir_mode = clir;
-    switch (clir)
-    {
-    case CLIR_SUPPRESSION:
-        dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_RESTRICTED;
-        break;
-    default:
-        dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_ALLOWED;
-        break;
-    }
-    dial_request_writer->call_details.call_type = QTI_RADIO_CALL_TYPE_VOICE;
-    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_CS;
-    dial_request_writer->call_details.extras_length = 0;
-    dial_request_writer->call_details.extras.count = 0;
-    dial_request_writer->call_details.extras.data.ptr = empty_vec1;
-    dial_request_writer->call_details.extras.owns_buffer = TRUE;
-    dial_request_writer->call_details.local_ability.count = 0;
-    dial_request_writer->call_details.local_ability.data.ptr = empty_vec2;
-    dial_request_writer->call_details.local_ability.owns_buffer = TRUE;
-    dial_request_writer->call_details.peer_ability.count = 0;
-    dial_request_writer->call_details.peer_ability.data.ptr = empty_vec3;
-    dial_request_writer->call_details.peer_ability.owns_buffer = TRUE;
-
-    dial_request_writer->call_details.call_substate = 0; // none
-    dial_request_writer->call_details.media_id = -1; // unknown
-    dial_request_writer->call_details.cause_code = 0; // none
-    dial_request_writer->call_details.rtt_mode = 0;
-
-    binder_copy_hidl_string(args, &dial_request_writer->address, number);
-    binder_copy_hidl_string(args, &dial_request_writer->call_details.sip_alternate_uri, NULL);
-
-    /* Write the parent structure 
-    parent.index = gbinder_writer_append_buffer_object(args, dial_request_writer,
-        sizeof(*dial_request_writer));
-
-    /* Write the string data 
-    binder_append_hidl_string_data(args, dial_request_writer, address, parent.index);
-
-    // find right index after 
-    guint32 index = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.call_type);
-    binder_append_hidl_string_data(args, dial_request_writer, call_details.sip_alternate_uri, parent.index);
-    binder_append_hidl_vec_data(args, dial_request_writer, call_details.extras, parent.index);
-
-    /* UUS information is empty but we still need to write a buffer 
-    //parent.offset = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.extras.data.ptr);
-    //gbinder_writer_append_buffer_object_with_parent(args, NULL, 0, &parent);
-
-    //parent.offset = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.local_ability.data.ptr);
-    //gbinder_writer_append_buffer_object_with_parent(args, NULL, 0, &parent);
-
-    //parent.offset = G_STRUCT_OFFSET(QtiRadioDialRequest, call_details.peer_ability.data.ptr);
-    //gbinder_writer_append_buffer_object_with_parent(args, NULL, 0, &parent);
-
-    DBG("Dialing in args YAY %s", number);
-}
-*/
 
 guint
 qti_radio_ext_dial(

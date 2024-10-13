@@ -176,25 +176,26 @@ qti_ims_call_handle_call_info(
         BinderExtCallInfo* info = g_ptr_array_index(updated_calls, i);
         BinderExtCallInfo* call = qti_ims_call_info_find(self, info->call_id);
 
-        if (call && call->state == BINDER_EXT_CALL_STATE_END) {
+        if (info->state == BINDER_EXT_CALL_STATE_END) {
             g_signal_emit(THIS(user_data),
-                qti_ims_call_signals[SIGNAL_CALL_END], 0, call->call_id, "");
+                qti_ims_call_signals[SIGNAL_CALL_END], 0, info->call_id, "");
 
             if (call)
                 g_ptr_array_remove(self->calls, call);
-
             continue;
         }  else if (call) {
-            // update the existing call
             call->state = info->state;
         } else {
             // add a new call
-            g_ptr_array_add(self->calls, g_memdup(info, sizeof(BinderExtCallInfo)));
+            BinderExtCallInfo* copy = g_memdup(info, sizeof(BinderExtCallInfo));
+            copy->number = g_strdup(info->number);
+            copy->name = g_strdup(info->name);
+            g_ptr_array_add(self->calls, copy);
         }
     }
 
     g_signal_emit(THIS(user_data),
-                  qti_ims_call_signals[SIGNAL_CALL_STATE_CHANGED], 0);
+                    qti_ims_call_signals[SIGNAL_CALL_STATE_CHANGED], 0);
 }
 
 static
