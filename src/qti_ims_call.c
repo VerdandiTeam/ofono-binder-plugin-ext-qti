@@ -280,8 +280,29 @@ qti_ims_call_answer(
     GDestroyNotify destroy,
     void* user_data)
 {
-    DBG("answer is not implemented yet");
-    return 0;
+    QtiImsCall* self = THIS(ext);
+    QTI_RADIO_RTT_MODE mode = flags & BINDER_EXT_CALL_ANSWER_FLAG_RTT ?
+        QTI_RADIO_RTT_MODE_FULL : QTI_RADIO_RTT_MODE_DISABLED;
+    QTI_RADIO_IP_PRESENTATION presentation = QTI_RADIO_IP_PRESENTATION_NUM_DEFAULT;
+    QTI_RADIO_CALL_TYPE call_type = QTI_RADIO_CALL_TYPE_VOICE;
+
+    QtiImsCallResultRequest* req = qti_ims_call_result_request_new(ext,
+        complete, destroy, user_data);
+
+    guint id = qti_radio_ext_answer(self->radio_ext, call_type, presentation, mode,
+        qti_ims_call_result_response, qti_ims_call_result_request_destroy, req);
+
+    DBG("Answering return %d", id);
+
+    if (id) {
+        req->id = id;
+        req->id_mapped = id;
+        g_hash_table_insert(self->id_map, ID_KEY(id), ID_VALUE(id));
+    } else {
+        qti_ims_call_result_request_free(req);
+    }
+
+    return id;
 }
 
 static
@@ -309,8 +330,25 @@ qti_ims_call_hangup(
     GDestroyNotify destroy,
     void* user_data)
 {
-    DBG("hangup is not implemented yet");
-    return 0;
+    QtiImsCall* self = THIS(ext);
+
+    QtiImsCallResultRequest* req = qti_ims_call_result_request_new(ext,
+        complete, destroy, user_data);
+
+    guint id = qti_radio_ext_hangup(self->radio_ext, call_id,
+        qti_ims_call_result_response, qti_ims_call_result_request_destroy, req);
+
+    DBG("Hanging up return %d", id);
+
+    if (id) {
+        req->id = id;
+        req->id_mapped = id;
+        g_hash_table_insert(self->id_map, ID_KEY(id), ID_VALUE(id));
+    } else {
+        qti_ims_call_result_request_free(req);
+    }
+
+    return id;
 }
 
 static

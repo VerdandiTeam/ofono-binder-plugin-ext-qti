@@ -42,6 +42,10 @@ typedef void (*QtiRadioExtCallStateFunc)(
     GPtrArray* updated_calls,
     void* user_data);
 
+typedef void (*QtiRadioExtRingFunc)(
+    QtiRadioExt* radio,
+    void* user_data);
+
 QtiRadioExt*
 qti_radio_ext_new(
     const char* dev,
@@ -80,6 +84,24 @@ qti_radio_ext_dial(
     BINDER_EXT_TOA toa,
     BINDER_EXT_CALL_CLIR clir,
     BINDER_EXT_CALL_DIAL_FLAGS flags,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data);
+
+guint
+qti_radio_ext_answer(
+    QtiRadioExt* self,
+    QTI_RADIO_CALL_TYPE call_type,
+    QTI_RADIO_IP_PRESENTATION presentation,
+    QTI_RADIO_RTT_MODE mode,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data);
+
+guint
+qti_radio_ext_hangup(
+    QtiRadioExt* self,
+    guint call_id,
     QtiRadioExtResultFunc complete,
     GDestroyNotify destroy,
     void* user_data);
