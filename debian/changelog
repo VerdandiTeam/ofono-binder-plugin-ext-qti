@@ -1,0 +1,5 @@
+ofono-binder-plugin-ext-qti (0.0.1-0ubports1) UNRELEASED; urgency=medium
+
+  * Add initial packaging for Ubuntu Touch.
+
+ -- Marius Gripsgard <mariogrip@debian.org>  Sun, 13 Oct 2024 19:02:16 +0200

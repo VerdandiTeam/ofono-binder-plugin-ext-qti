@@ -1,0 +1,22 @@
+Source: ofono-binder-plugin-ext-qti
+Section: libs
+Priority: optional
+Maintainer: UBports developers <devs@ubports.com>
+Build-Depends: debhelper-compat (= 12),
+               libglib2.0-dev (>= 2.0),
+               libglibutil-dev,
+               libgbinder-dev,
+               libgbinder-radio1-dev,
+               ofono-sailfish-dev (>= 1.29+git8-0ubports1~),
+               libofonobinderpluginext-dev,
+               libandroid-properties-dev,
+Standards-Version: 3.8.4
+
+Package: ofono-binder-plugin-ext-qti
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+Description: qti IRadio extension for ofono-binder-plugin
+ Extends ofono-binder-plugin to interface with IMS
+ implementation on devices that provide qtiRadioExt.
