@@ -436,45 +436,6 @@ typedef enum ims_radio_ind {
 #undef QTI_RADIO_IND_
 } IMS_RADIO_IND;
 
-static const char*
-qti_radio_ext_req_name(
-    guint32 req)
-{
-    switch (req) {
-#define QTI_RADIO_REQ_(req, resp, name, NAME) \
-        case QTI_RADIO_REQ_##NAME: return #name;
-    QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_REQ_)
-#undef QTI_RADIO_REQ_
-    }
-    return NULL;
-}
-
-static const char*
-qti_radio_ext_resp_name(
-    guint32 resp)
-{
-    switch (resp) {
-#define QTI_RADIO_RESP_(req, resp, name, NAME) \
-        case QTI_RADIO_RESP_##NAME: return #name;
-    QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_RESP_)
-#undef QTI_RADIO_RESP_
-    }
-    return NULL;
-}
-
-static const char*
-qti_radio_ext_ind_name(
-    guint32 ind)
-{
-    switch (ind) {
-#define QTI_RADIO_IND_(code, name, NAME) \
-        case QTI_RADIO_IND_##NAME: return #name;
-    QTI_RADIO_IND_1_0(QTI_RADIO_IND_)
-#undef QTI_RADIO_IND_
-    }
-    return NULL;
-}
-
 #endif /* QTI_RADIO_EXT_TYPES_H */
 
 /*
