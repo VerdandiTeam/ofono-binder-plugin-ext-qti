@@ -432,7 +432,7 @@ typedef struct qti_radio_hangup_request_info {
 
 /* c(req, resp, callName, CALL_NAME) */
 #define QTI_RADIO_EXT_IMS_CALL_1_0(c) \
-    c(2, 1, dail, DAIL) \
+    c(2, 1, dial, DIAL) \
     c(4, 11, getImsRegistrationState, GET_IMS_REG_STATE) \
     c(5, 2, answer, ANSWER) \
     c(6, 3, hangup, HANGUP) \

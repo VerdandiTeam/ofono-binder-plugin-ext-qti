@@ -96,7 +96,7 @@ enum qti_radio_ext_signal {
     SIGNAL_COUNT
 };
 
-#define SIGNAL_IMS_REG_STATUS_CHANGED_NAME      "qti-radio-ext-ims-reg-status-changed"
+#define SIGNAL_IMS_REG_STATUS_CHANGED_NAME          "qti-radio-ext-ims-reg-status-changed"
 #define SIGNAL_EXT_CALL_STATE_CHANGED_NAME          "qti-radio-ext-call-state-changed"
 #define SIGNAL_EXT_ON_RING_NAME                     "qti-radio-ext-on-ring"
 
@@ -482,6 +482,7 @@ qti_radio_ext_indication(
             qti_radio_ext_handle_call_state_indication(self, &args);
             return NULL;
         }
+    }
 
     return NULL;
 }
@@ -999,8 +1000,8 @@ qti_radio_ext_dial(
     void* user_data)
 {
     return qti_radio_ext_result_request_submit(self,
-        QTI_RADIO_REQ_DAIL,
-        QTI_RADIO_RESP_DAIL,
+        QTI_RADIO_REQ_DIAL,
+        QTI_RADIO_RESP_DIAL,
         qti_radio_ext_dial_args,
         complete, destroy, user_data,
         number, clir);
