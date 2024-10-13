@@ -37,6 +37,10 @@
 #define QTI_RADIO_INDICATION_1_1        QTI_RADIO_IFACE_1_1(QTI_RADIO_INDICATION_IFACE)
 #define QTI_RADIO_INDICATION_1_2        QTI_RADIO_IFACE_1_2(QTI_RADIO_INDICATION_IFACE)
 
+#define QTI_RADIO_REQ_LAST_1_0          40
+#define QTI_RADIO_REQ_LAST_1_1          41
+#define QTI_RADIO_REQ_LAST_1_2          47
+
 /*
 enum RegState : int32_t {
     REGISTERED,
@@ -181,6 +185,20 @@ typedef enum qti_radio_call_domain {
     QTI_RADIO_CALL_DOMAIN_NOT_SET = 4,
     QTI_RADIO_CALL_DOMAIN_INVALID = 5,
 } QTI_RADIO_CALL_DOMAIN;
+
+/*
+enum RttMode : int32_t {
+    RTT_MODE_DISABLED,
+    RTT_MODE_FULL,
+    RTT_MODE_INVALID,
+};
+*/
+
+typedef enum qti_radio_rtt_mode {
+    QTI_RADIO_RTT_MODE_DISABLED = 0,
+    QTI_RADIO_RTT_MODE_FULL = 1,
+    QTI_RADIO_RTT_MODE_INVALID = 2,
+} QTI_RADIO_RTT_MODE;
 
 /*
 
@@ -389,34 +407,64 @@ typedef struct qti_radio_dial_request {
     guint8 is_encrypted RADIO_ALIGNED(1);
 } RADIO_ALIGNED(8) QtiRadioDialRequest;
 
+/*
+struct HangupRequestInfo {
+    uint32_t connIndex;
+    bool hasMultiParty;
+    bool multiParty;
+    string connUri;
+    uint32_t conf_id;
+    bool hasFailCauseResponse;
+    CallFailCauseResponse failCauseResponse;
+};
+*/
+
+typedef struct qti_radio_hangup_request_info {
+    guint32 conn_index RADIO_ALIGNED(4);
+    guint8 has_multi_party RADIO_ALIGNED(1);
+    guint8 multi_party RADIO_ALIGNED(1);
+    GBinderHidlString conn_uri RADIO_ALIGNED(8);
+    guint32 conf_id RADIO_ALIGNED(4);
+    guint8 has_fail_cause_response RADIO_ALIGNED(1);
+    QtiRadioCallFailCauseResponse fail_cause_response RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioHangupRequestInfo;
+
 
 /* c(req, resp, callName, CALL_NAME) */
 #define QTI_RADIO_EXT_IMS_CALL_1_0(c) \
     c(2, 1, dail, DAIL) \
     c(4, 11, getImsRegistrationState, GET_IMS_REG_STATE) \
+    c(5, 2, answer, ANSWER) \
+    c(6, 3, hangup, HANGUP) \
     c(7, 4, requestRegistrationChange, REQ_REG_CHANGE) \
-    c(31, 28, setSuppServiceNotification, SET_SUPP_SVC_NOTIFICATION)
+    c(31, 28, setSuppServiceNotification, SET_SUPP_SVC_NOTIFICATION) \
+    c(40, 29, cancelModifyCall, CANCEL_MODIFY_CALL) \
 
 #define QTI_RADIO_EXT_IMS_CALL_1_1(c) \
-    c(41, 3, hangup_1_1, HANGUP_1_1)
+    c(41, 103, hangup_1_1, HANGUP_1_1)
 
 #define QTI_RADIO_EXT_IMS_CALL_1_2(c) \
-    c(42, 3, hangup_1_2, HANGUP_1_2) \
+    c(42, 203, hangup_1_2, HANGUP_1_2) \
     c(43, 37, sendImsSms, SEND_IMS_SMS) \
-    c(1, 1, acknowledgeSms, ACK_SMS)
+    c(44, 38, acknowledgeSms, ACK_SMS) \
+    c(45, 39, acknowledgeSmsReport, ACK_SMS_REPORT) \
+    c(46, 40, getSmsFormat, GET_SMS_FORMAT) \
+    c(47, 41, sendGeolocationInfo_1_2, SEND_GEOLOCATION_INFO_1_2) \
 
 typedef enum qti_radio_req {
-    /* vendor.mediatek.hardware.qtiradioex@1.0::IqtiRadioExt */
     QTI_RADIO_REQ_SET_CALLBACK = 1, /* setCallback */
 #define QTI_RADIO_REQ_(req,resp,Name,NAME) QTI_RADIO_REQ_##NAME = req,
     QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_1(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_2(QTI_RADIO_REQ_)
 #undef QTI_RADIO_REQ_
 } QTI_RADIO_REQ;
 
 typedef enum ims_radio_resp {
-    /* vendor.mediatek.hardware.qtiradioex@3.0::IImsRadioResponse */
 #define QTI_RADIO_RESP_(req,resp,Name,NAME) QTI_RADIO_RESP_##NAME = resp,
     QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_1(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_2(QTI_RADIO_RESP_)
 #undef QTI_RADIO_RESP_
 } IMS_RADIO_RESP;
 
@@ -427,12 +475,21 @@ typedef enum ims_radio_resp {
     e(3, onRingbackTone, RINGBACK_TONE_INDICATION) \
     e(4, onRegistrationChanged, REG_STATE_INDICATION) \
     e(5, onHandover, HANDOVER_INDICATION) \
-    e(6, onServiceStatusChanged, SVC_STATUS_INDICATION)
+    e(6, onServiceStatusChanged, SVC_STATUS_INDICATION) \
+    e(7, radioStateChanged, RADIO_STATE_CHANGED_INDICATION)
+
+#define QTI_RADIO_IND_1_1(e) \
+    e(23, callStateChanged_1_1, CALL_STATE_INDICATION_1_1)
+
+#define QTI_RADIO_IND_1_2(e) \
+    e(24, callStateChanged_1_2, CALL_STATE_INDICATION_1_2)
 
 typedef enum ims_radio_ind {
     /* vendor.mediatek.hardware.qtiradioex@3.0::IImsRadioIndication */
 #define QTI_RADIO_IND_(code, name, NAME) QTI_RADIO_IND_##NAME = code,
     QTI_RADIO_IND_1_0(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_1(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_2(QTI_RADIO_IND_)
 #undef QTI_RADIO_IND_
 } IMS_RADIO_IND;
 

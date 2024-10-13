@@ -467,7 +467,18 @@ qti_radio_ext_indication(
             g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_RING], 0);
             return NULL;
         }
-    }
+    } else if (g_str_equal(iface, QTI_RADIO_INDICATION_1_1)) {
+        switch(code) {
+        case QTI_RADIO_IND_CALL_STATE_INDICATION_1_1:
+            qti_radio_ext_handle_call_state_indication(self, &args);
+            return NULL;
+        }
+    } else if (g_str_equal(iface, QTI_RADIO_INDICATION_1_2)) {
+        switch(code) {
+        case QTI_RADIO_IND_CALL_STATE_INDICATION_1_2:
+            qti_radio_ext_handle_call_state_indication(self, &args);
+            return NULL;
+        }
 
     return NULL;
 }
@@ -724,6 +735,13 @@ qti_radio_ext_result_request_submit(
 }
 
 
+static const GBinderClientIfaceInfo radio_iface_info[] = {
+    {QTI_RADIO_1_2, QTI_RADIO_REQ_LAST_1_2 },
+    {QTI_RADIO_1_1, QTI_RADIO_REQ_LAST_1_1 },
+    {QTI_RADIO_1_0, QTI_RADIO_REQ_LAST_1_0 }
+};
+
+
 static
 QtiRadioExt*
 qti_radio_ext_create(
@@ -738,24 +756,27 @@ qti_radio_ext_create(
     int status;
 
     self->slot = g_strdup(slot);
-    self->client = gbinder_client_new(remote, QTI_RADIO_1_0);
-    self->response = gbinder_servicemanager_new_local_object(sm,
-        QTI_RADIO_RESPONSE_1_0, qti_radio_ext_response, self);
-    self->indication = gbinder_servicemanager_new_local_object(sm,
-        QTI_RADIO_INDICATION_1_0, qti_radio_ext_indication, self);
+    #define REQUEST_CALLBACK(iface) \
+        self->client = gbinder_client_new2(remote,  \
+            radio_iface_info, G_N_ELEMENTS(radio_iface_info)); \
+        self->response = gbinder_servicemanager_new_local_object(sm, \
+            QTI_RADIO_RESPONSE_##iface, qti_radio_ext_response, self); \
+        self->indication = gbinder_servicemanager_new_local_object(sm, \
+            QTI_RADIO_INDICATION_##iface, qti_radio_ext_indication, self); \
+        req = gbinder_client_new_request2(self->client, code); \
+        gbinder_local_request_init_writer(req, &writer); \
+        gbinder_writer_append_local_object(&writer, self->response); \
+        gbinder_writer_append_local_object(&writer, self->indication); \
+        qti_radio_ext_log_req(self, code, 0 /*serial*/); \
+        qti_radio_ext_dump_request(req); \
+        gbinder_remote_reply_unref(gbinder_client_transact_sync_reply(self->client, \
+            code, req, &status)); \
+        gbinder_local_request_unref(req);
 
-    req = gbinder_client_new_request2(self->client, code);
-    gbinder_local_request_init_writer(req, &writer);
-    gbinder_writer_append_local_object(&writer, self->response);
-    gbinder_writer_append_local_object(&writer, self->indication);
+    REQUEST_CALLBACK(1_2);
 
-    qti_radio_ext_log_req(self, code, 0 /*serial*/);
-    qti_radio_ext_dump_request(req);
-    gbinder_remote_reply_unref(gbinder_client_transact_sync_reply(self->client,
-        code, req, &status));
+    #undef REQUEST_CALLBACK
 
-    DBG("setResponseFunctions status %d", status);
-    gbinder_local_request_unref(req);
     return self;
 }
 
@@ -773,7 +794,7 @@ qti_radio_ext_new(
 
     GBinderServiceManager* sm = gbinder_servicemanager_new(dev);
     if (sm) {
-        char* fqname = g_strconcat(QTI_RADIO_1_0, "/", slot, NULL);
+        char* fqname = g_strconcat(QTI_RADIO_1_2, "/", slot, NULL);
         GBinderRemoteObject* obj = /* autoreleased */
             gbinder_servicemanager_get_service_sync(sm, fqname, NULL);
 
