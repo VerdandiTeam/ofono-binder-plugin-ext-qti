@@ -44,6 +44,11 @@
 #include <binder_ext_slot_impl.h>
 
 #include <radio_instance.h>
+#include <gutil_macros.h>
+#include <gutil_log.h>
+
+#define DBG(fmt, ...) \
+    gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
 typedef BinderExtSlotClass QtiSlotClass;
 typedef struct qti_slot {
@@ -118,6 +123,8 @@ qti_slot_new(
     if (self->radio_ext) {
         self->ims = qti_ims_new(radio_slot, self->radio_ext);
         self->call = qti_ims_call_new(self->radio_ext);
+    } else {
+        DBG("slot->radio_ext is null ");
     }
 
     return slot;

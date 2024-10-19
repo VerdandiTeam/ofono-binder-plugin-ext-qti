@@ -16,6 +16,14 @@
 #ifndef QTI_RADIO_EXT_TYPES_H
 #define QTI_RADIO_EXT_TYPES_H
 
+typedef enum qti_radio_interface {
+    QTI_RADIO_INTERFACE_NONE = -1,
+    QTI_RADIO_INTERFACE_1_0,
+    QTI_RADIO_INTERFACE_1_1,
+    QTI_RADIO_INTERFACE_1_2,
+    QTI_RADIO_INTERFACE_COUNT
+} QTI_RADIO_INTERFACE;
+
 #define QTI_RADIO_IFACE                 "IImsRadio"
 #define QTI_RADIO_RESPONSE_IFACE        "IImsRadioResponse"
 #define QTI_RADIO_INDICATION_IFACE      "IImsRadioIndication"
