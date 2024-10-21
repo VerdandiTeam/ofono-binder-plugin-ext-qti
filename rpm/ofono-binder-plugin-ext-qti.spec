@@ -1,9 +1,9 @@
 Name: ofono-binder-plugin-ext-qti
 
-Version: 1.0.0
+Version: 0.0.1
 Release: 1
 Summary: QTI IRadio extension ofono binder plugin
-License: BSD
+License: GPLv2
 URL: https://gitlab.com/ubports/development/core/hybris-support/ofono-binder-plugin-ext-qti
 Source: %{name}-%{version}.tar.bz2
 Provides: ofono-ims-support
