@@ -20,6 +20,7 @@
 #include <radio_types.h>
 #include <binder_ext_ims_impl.h>
 #include <binder_ext_call_impl.h>
+#include <binder_ext_sms_impl.h>
 
 #include "qti_radio_ext_types.h"
 
@@ -45,6 +46,13 @@ typedef void (*QtiRadioExtCallStateFunc)(
 
 typedef void (*QtiRadioExtRingFunc)(
     QtiRadioExt* radio,
+    void* user_data);
+
+
+typedef void (*QtiRadioExtIncomingSmsFunc)(
+    QtiRadioExt* radio,
+    const void* pdu,
+    guint pdu_len,
     void* user_data);
 
 QtiRadioExt*
@@ -108,6 +116,18 @@ qti_radio_ext_hangup(
     void* user_data);
 
 guint
+qti_radio_ext_send_ims_sms(
+    QtiRadioExt* self,
+    const char* smsc,
+    const void* pdu,
+    gsize pdu_len,
+    guint msg_ref,
+    BINDER_EXT_SMS_SEND_FLAGS flags,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data);
+
+guint
 qti_radio_ext_get_ims_reg_state(
     QtiRadioExt* self,
     QtiRadioExtResultFunc complete,
@@ -130,6 +150,30 @@ gulong
 qti_radio_ext_add_ring_handler(
     QtiRadioExt* self,
     QtiRadioExtRingFunc handler,
+    void* user_data);
+
+gulong
+qti_radio_ext_add_incoming_sms_handler(
+    QtiRadioExt* self,
+    QtiRadioExtIncomingSmsFunc handler,
+    void* user_data);
+
+guint
+qti_radio_ext_acknowledge_sms(
+    QtiRadioExt* self,
+    guint32 message_ref,
+    gboolean sms_result,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data);
+
+guint
+qti_radio_ext_acknowledge_sms_report(
+    QtiRadioExt* self,
+    guint32 message_ref,
+    gboolean sms_report,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
     void* user_data);
 
 #endif /* QTI_RADIO_EXT_H */

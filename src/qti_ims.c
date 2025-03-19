@@ -315,7 +315,7 @@ qti_ims_iface_init(
     BinderExtImsInterface* iface)
 {
     iface->version = BINDER_EXT_IMS_INTERFACE_VERSION;
-    iface->flags = BINDER_EXT_IMS_INTERFACE_FLAG_VOICE_SUPPORT;
+    iface->flags = BINDER_EXT_IMS_INTERFACE_FLAG_VOICE_SUPPORT | BINDER_EXT_IMS_INTERFACE_FLAG_SMS_SUPPORT;
     iface->get_state = qti_ims_get_state;
     iface->set_registration = qti_ims_set_registration;
     iface->cancel = qti_ims_cancel;

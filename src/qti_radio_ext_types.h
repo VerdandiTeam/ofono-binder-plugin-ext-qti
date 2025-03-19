@@ -2,6 +2,7 @@
  *  oFono - Open Source Telephony - binder based adaptation QTI plugin
  *
  *  Copyright (C) 2024 TheKit <thekit@disroot.org>
+ *  Copyright (C) 2024 Marius Gripsgard <marius@ubports.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -208,6 +209,157 @@ typedef enum qti_radio_rtt_mode {
     QTI_RADIO_RTT_MODE_INVALID = 2,
 } QTI_RADIO_RTT_MODE;
 
+
+/*
+enum ImsSmsSendStatusResult : int32_t {
+    // Message was sent successfully.
+    SEND_STATUS_OK,
+    // IMS provider failed to send the message and platform
+        should not retry falling back to sending the message
+        using the radio.
+    SEND_STATUS_ERROR,
+    // IMS provider failed to send the message and platform
+        should retry again after setting TP-RD
+    SEND_STATUS_ERROR_RETRY,
+    // IMS provider failed to send the message and platform
+        should retry falling back to sending the message
+        using the radio.
+    SEND_STATUS_ERROR_FALLBACK,
+};
+*/
+
+typedef enum qti_radio_ims_sms_send_status_result {
+    QTI_RADIO_SEND_STATUS_OK = 0,
+    QTI_RADIO_SEND_STATUS_ERROR = 1,
+    QTI_RADIO_SEND_STATUS_ERROR_RETRY = 2,
+    QTI_RADIO_SEND_STATUS_ERROR_FALLBACK = 3,
+} QTI_RADIO_IMS_SMS_SEND_STATUS_RESULT;
+
+/*
+enum ImsSmsSendFailureReason : int32_t {
+    RESULT_ERROR_NONE,
+    // Generic failure cause
+    RESULT_ERROR_GENERIC_FAILURE,
+    // Failed because radio was explicitly turned off
+    RESULT_ERROR_RADIO_OFF,
+    // Failed because no pdu provided
+    RESULT_ERROR_NULL_PDU,
+    // Failed because service is currently unavailable
+    RESULT_ERROR_NO_SERVICE,
+    // Failed because we reached the sending queue limit.
+    RESULT_ERROR_LIMIT_EXCEEDED,
+    // Failed because user denied the sending of this short code.
+    RESULT_ERROR_SHORT_CODE_NOT_ALLOWED,
+    // Failed because the user has denied this app
+        ever send premium short codes.
+    RESULT_ERROR_SHORT_CODE_NEVER_ALLOWED,
+};
+*/
+
+typedef enum qti_radio_ims_sms_send_failure_reason {
+    QTI_RADIO_RESULT_ERROR_NONE = 0,
+    QTI_RADIO_RESULT_ERROR_GENERIC_FAILURE = 1,
+    QTI_RADIO_RESULT_ERROR_RADIO_OFF = 2,
+    QTI_RADIO_RESULT_ERROR_NULL_PDU = 3,
+    QTI_RADIO_RESULT_ERROR_NO_SERVICE = 4,
+    QTI_RADIO_RESULT_ERROR_LIMIT_EXCEEDED = 5,
+    QTI_RADIO_RESULT_ERROR_SHORT_CODE_NOT_ALLOWED = 6,
+    QTI_RADIO_RESULT_ERROR_SHORT_CODE_NEVER_ALLOWED = 7,
+} QTI_RADIO_IMS_SMS_SEND_FAILURE_REASON;
+
+
+/*
+enum ImsSmsDeliverStatusResult : int32_t {
+    Message was delivered successfully.
+    DELIVER_STATUS_OK,
+    Message was not delivered.
+    DELIVER_STATUS_ERROR,
+};
+*/
+
+typedef enum qti_radio_ims_sms_deliver_status_result {
+    QTI_RADIO_DELIVER_STATUS_OK = 0,
+    QTI_RADIO_DELIVER_STATUS_ERROR = 1,
+} QTI_RADIO_IMS_SMS_DELIVER_STATUS_RESULT;
+
+/*
+enum ImsSmsStatusReportResult : int32_t {
+    // Status Report was set successfully.
+    STATUS_REPORT_STATUS_OK,
+    // Error while setting status report
+    STATUS_REPORT_STATUS_ERROR,
+};
+*/
+
+typedef enum qti_radio_ims_sms_status_report_result {
+    QTI_RADIO_STATUS_REPORT_OK = 0,
+    QTI_RADIO_STATUS_REPORT_ERROR = 1,
+} QTI_RADIO_IMS_SMS_STATUS_REPORT_RESULT;
+
+/*
+enum VerificationStatus : int32_t {
+    //Telephone number is not validated.
+    STATUS_VALIDATION_NONE,
+    //Telephone number validation passed.
+    STATUS_VALIDATION_PASS,
+    // Telephone number validation failed.
+    STATUS_VALIDATION_FAIL,
+};
+*/
+
+typedef enum qti_radio_verification_status {
+    QTI_RADIO_VALIDATION_NONE = 0,
+    QTI_RADIO_VALIDATION_PASS = 1,
+    QTI_RADIO_VALIDATION_FAIL = 2,
+} QTI_RADIO_VERIFICATION_STATUS;
+
+/*
+struct ImsSmsMessage {
+    uint32_t messageRef;
+    string format;
+    string smsc;
+    bool shallRetry;
+    vec<uint8_t>  pdu;
+};
+*/
+
+typedef struct qti_radio_ims_sms_message {
+    guint32 message_ref RADIO_ALIGNED(4);
+    GBinderHidlString format RADIO_ALIGNED(8);
+    GBinderHidlString smsc RADIO_ALIGNED(8);
+    guint8 shall_retry RADIO_ALIGNED(1);
+    GBinderHidlVec pdu RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioImsSmsMessage;
+
+/*
+struct ImsSmsSendStatusReport {
+    uint32_t messageRef;
+    string format;
+    vec<uint8_t>  pdu;
+};
+*/
+
+typedef struct qti_radio_ims_sms_send_status_report {
+    guint32 message_ref RADIO_ALIGNED(4);
+    GBinderHidlString format RADIO_ALIGNED(8);
+    GBinderHidlVec pdu RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioImsSmsSendStatusReport;
+
+/*
+struct IncomingImsSms {
+    string format;
+    vec<uint8_t>  pdu;
+    VerificationStatus verstat;
+};
+*/
+
+typedef struct qti_radio_incoming_ims_sms {
+    GBinderHidlString format RADIO_ALIGNED(8);
+    GBinderHidlVec pdu RADIO_ALIGNED(8);
+    guint32 verstat RADIO_ALIGNED(4);
+} RADIO_ALIGNED(8) QtiRadioIncomingImsSms;
+
+
 /*
 
 struct RegistrationInfo {
@@ -216,7 +368,7 @@ struct RegistrationInfo {
     string errorMessage;
     RadioTechType radioTech;
     string pAssociatedUris;
-};  
+};
 */
 
 typedef struct qti_radio_reg_info {
@@ -273,7 +425,7 @@ struct ServiceStatusInfo {
     vec<StatusForAccessTech> accTechStatus;
     RttMode rttMode;
 };
-    
+
     */
 
 typedef struct qti_radio_service_status_info {
@@ -490,7 +642,10 @@ typedef enum ims_radio_resp {
     e(23, callStateChanged_1_1, CALL_STATE_INDICATION_1_1)
 
 #define QTI_RADIO_IND_1_2(e) \
-    e(24, callStateChanged_1_2, CALL_STATE_INDICATION_1_2)
+    e(24, callStateChanged_1_2, CALL_STATE_INDICATION_1_2) \
+    e(25, onImsSmsStatusReport, SMS_STATUS_REPORT_INDICATION) \
+    e(26, onIncomingImsSms, INCOMING_SMS_INDICATION) \
+    e(27, onVopsChanged, VOPS_CHANGED_INDICATION)
 
 typedef enum ims_radio_ind {
     /* vendor.mediatek.hardware.qtiradioex@3.0::IImsRadioIndication */

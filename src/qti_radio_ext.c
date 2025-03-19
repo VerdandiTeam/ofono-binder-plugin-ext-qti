@@ -23,8 +23,11 @@
 #include <radio_types.h>
 #include <binder_ext_ims_impl.h>
 #include <binder_ext_call_impl.h>
+#include <binder_ext_sms_impl.h>
 
 #include <ofono/log.h>
+#include <ofono/misc.h>
+
 #include <gbinder.h>
 
 #include <gutil_idlepool.h>
@@ -93,12 +96,14 @@ enum qti_radio_ext_signal {
     SIGNAL_IMS_REG_STATUS_CHANGED,
     SIGNAL_EXT_CALL_STATE_CHANGED,
     SIGNAL_EXT_ON_RING,
+    SIGNAL_EXT_ON_INCOMING_SMS,
     SIGNAL_COUNT
 };
 
 #define SIGNAL_IMS_REG_STATUS_CHANGED_NAME          "qti-radio-ext-ims-reg-status-changed"
 #define SIGNAL_EXT_CALL_STATE_CHANGED_NAME          "qti-radio-ext-call-state-changed"
 #define SIGNAL_EXT_ON_RING_NAME                     "qti-radio-ext-on-ring"
+#define SIGNAL_EXT_ON_INCOMING_SMS_NAME             "qti-radio-ext-on-incoming-sms"
 
 static guint qti_radio_ext_signals[SIGNAL_COUNT] = { 0 };
 
@@ -440,6 +445,45 @@ qti_radio_ext_handle_call_state_indication(
     }
 }
 
+/*
+typedef struct qti_radio_incoming_ims_sms {
+    GBinderHidlString format RADIO_ALIGNED(8);
+    GBinderHidlVec pdu RADIO_ALIGNED(8);
+    guint32 verstat RADIO_ALIGNED(4);
+} RADIO_ALIGNED(8) QtiRadioIncomingImsSms;
+*/
+
+static
+void
+qti_radio_ext_handle_incoming_sms_indication(
+    QtiRadioExt* self,
+    const GBinderReader* args)
+{
+    GBinderReader reader;
+    QtiRadioIncomingImsSms* sms;
+
+    gbinder_reader_copy(&reader, args);
+    sms = gbinder_reader_read_hidl_struct(&reader, QtiRadioIncomingImsSms);
+
+    if (sms) {
+        const char *format = sms->format.data.str ? sms->format.data.str : "";
+        const guint32 verstat = sms->verstat;
+        const guint pdu_len = sms->pdu.count;
+        const void* pdu = sms->pdu.data.ptr;
+
+        // copy pdu to a new buffer
+        const void* pdu_copy = g_memdup(pdu, pdu_len);
+
+        DBG("%s: Incoming SMS indication format:%s verstat:%d pdu_len:%d",
+            self->slot, format, verstat, pdu_len);
+        gutil_log_dump(&qti_radio_ext_binder_dump_module, GLOG_LEVEL_VERBOSE, "  ", pdu_copy, pdu_len);
+
+        g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_INCOMING_SMS], 0, pdu_copy, pdu_len);
+    } else {
+        DBG("%s: failed to parse incoming SMS data", self->slot);
+    }
+}
+
 
 static
 GBinderLocalReply*
@@ -482,6 +526,12 @@ qti_radio_ext_indication(
         case QTI_RADIO_IND_CALL_STATE_INDICATION_1_2:
             qti_radio_ext_handle_call_state_indication(self, &args);
             return NULL;
+        case QTI_RADIO_IND_SMS_STATUS_REPORT_INDICATION:
+            DBG("SMS status report indication");
+            return NULL;
+        case QTI_RADIO_IND_INCOMING_SMS_INDICATION:
+            qti_radio_ext_handle_incoming_sms_indication(self, &args);
+            return NULL;
         }
     }
 
@@ -516,6 +566,16 @@ qti_radio_ext_add_ring_handler(
 {
     return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
         SIGNAL_EXT_ON_RING_NAME, G_CALLBACK(handler), user_data) : 0;
+}
+
+gulong
+qti_radio_ext_add_incoming_sms_handler(
+    QtiRadioExt* self,
+    QtiRadioExtIncomingSmsFunc handler,
+    void* user_data)
+{
+    return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
+        SIGNAL_EXT_ON_INCOMING_SMS_NAME, G_CALLBACK(handler), user_data) : 0;
 }
 
 static
@@ -1061,8 +1121,6 @@ qti_radio_ext_answer_args(
     gint32 presentation = va_arg(va, gint32);
     gint32 mode = va_arg(va, gint32);
 
-    // answer(CallType callType, IpPresentation presentation, RttMode mode);
-
     gbinder_writer_append_int32(args, call_type);
     gbinder_writer_append_int32(args, presentation);
     gbinder_writer_append_int32(args, mode);
@@ -1111,7 +1169,6 @@ qti_radio_ext_hangup_args(
         qti_radio_hangup_request_info_f
     };
 
-    // hangup(HangupRequestInfo hangup);
     QtiRadioHangupRequestInfo* hangup_request_writer = gbinder_writer_new0(args, QtiRadioHangupRequestInfo);
 
     // empty vec
@@ -1156,7 +1213,126 @@ qti_radio_ext_hangup(
         call_id);
 }
 
-// GET_IMS_REG_STATE
+static
+void
+qti_radio_ext_send_ims_sms_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    const char* smsc = va_arg(va, const char*);
+    const void* pdu = va_arg(va, const void*);
+    gsize pdu_len = va_arg(va, gsize);
+    guint msg_ref = va_arg(va, guint);
+    BINDER_EXT_SMS_SEND_FLAGS flags = va_arg(va, BINDER_EXT_SMS_SEND_FLAGS);
+
+
+    static const GBinderWriterField qti_radio_ims_sms_message_f[] = {
+        GBINDER_WRITER_FIELD_HIDL_STRING
+            (QtiRadioImsSmsMessage, format),
+        GBINDER_WRITER_FIELD_HIDL_STRING
+            (QtiRadioImsSmsMessage, smsc),
+        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+            (QtiRadioImsSmsMessage, pdu),
+        GBINDER_WRITER_FIELD_END()
+    };
+
+    static const GBinderWriterType qti_radio_ims_sms_message_t = {
+        GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioImsSmsMessage),
+        qti_radio_ims_sms_message_f
+    };
+
+    QtiRadioImsSmsMessage* sms = gbinder_writer_new0(args, QtiRadioImsSmsMessage);
+
+    sms->message_ref = msg_ref;
+
+    // I guess?
+    // we don't need to retry as ofono will handle it
+    sms->shall_retry = FALSE;
+
+    binder_copy_hidl_string(args, &sms->format, "3gpp");
+    binder_copy_hidl_string(args, &sms->smsc, smsc);
+
+    GBinderHidlVec* pdu_vec = gbinder_writer_new0(args, GBinderHidlVec);
+    pdu_vec->count = pdu_len;
+    pdu_vec->data.ptr = gbinder_writer_memdup(args, pdu, pdu_len);
+    pdu_vec->owns_buffer = TRUE;
+
+    sms->pdu = *pdu_vec;
+
+    gbinder_writer_append_struct(args, sms, &qti_radio_ims_sms_message_t, NULL);
+}
+
+guint
+qti_radio_ext_send_ims_sms(
+    QtiRadioExt* self,
+    const char* smsc,
+    const void* pdu,
+    gsize pdu_len,
+    guint msg_ref,
+    BINDER_EXT_SMS_SEND_FLAGS flags,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_SEND_IMS_SMS,
+        QTI_RADIO_RESP_SEND_IMS_SMS,
+        qti_radio_ext_send_ims_sms_args,
+        complete, destroy, user_data,
+        smsc, pdu, pdu_len, msg_ref, flags);
+}
+
+static
+void
+qti_radio_ext_acknowledge_sms_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    guint32 message_ref = va_arg(va, guint32);
+    guint32 sms_result = va_arg(va, guint32);
+
+    gbinder_writer_append_int32(args, message_ref);
+    gbinder_writer_append_int32(args, sms_result);
+}
+
+guint
+qti_radio_ext_acknowledge_sms(
+    QtiRadioExt* self,
+    guint32 message_ref,
+    gboolean sms_result,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    QTI_RADIO_IMS_SMS_DELIVER_STATUS_RESULT sms_result_code = sms_result ? QTI_RADIO_DELIVER_STATUS_OK : QTI_RADIO_DELIVER_STATUS_ERROR;
+
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_ACK_SMS,
+        QTI_RADIO_RESP_ACK_SMS,
+        qti_radio_ext_acknowledge_sms_args,
+        complete, destroy, user_data,
+        message_ref, sms_result_code);
+}
+
+guint
+qti_radio_ext_acknowledge_sms_report(
+    QtiRadioExt* self,
+    guint32 message_ref,
+    gboolean sms_report,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    QTI_RADIO_IMS_SMS_STATUS_REPORT_RESULT sms_report_code = sms_report ? QTI_RADIO_STATUS_REPORT_OK : QTI_RADIO_STATUS_REPORT_ERROR;
+
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_ACK_SMS_REPORT,
+        QTI_RADIO_RESP_ACK_SMS_REPORT,
+        qti_radio_ext_acknowledge_sms_args,
+        complete, destroy, user_data,
+        message_ref, sms_report_code);
+}
+
 
 static
 void
@@ -1224,6 +1400,10 @@ qti_radio_ext_class_init(
         g_signal_new(SIGNAL_EXT_ON_RING_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
             0);
+    qti_radio_ext_signals[SIGNAL_EXT_ON_INCOMING_SMS] =
+        g_signal_new(SIGNAL_EXT_ON_INCOMING_SMS_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            2, G_TYPE_POINTER, G_TYPE_UINT);
 }
 
 /*

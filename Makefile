@@ -41,7 +41,8 @@ SRC = \
   qti_plugin.c \
   qti_slot.c \
   qti_radio_ext.c \
-  qti_ims_call.c
+  qti_ims_call.c \
+  qti_ims_sms.c 
 
 #
 # Directories

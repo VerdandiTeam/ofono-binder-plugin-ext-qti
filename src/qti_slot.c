@@ -40,6 +40,7 @@
 #include "qti_ims.h"
 #include "qti_radio_ext.h"
 #include "qti_ims_call.h"
+#include "qti_ims_sms.h"
 
 #include <binder_ext_slot_impl.h>
 
@@ -56,6 +57,7 @@ typedef struct qti_slot {
     BinderExtIms* ims;
     QtiRadioExt* radio_ext;
     BinderExtCall* call;
+    BinderExtSms* sms;
 } QtiSlot;
 
 GType qti_slot_get_type() G_GNUC_INTERNAL;
@@ -92,6 +94,8 @@ qti_slot_get_interface(
         return self->ims;
     } else if (iface == BINDER_EXT_TYPE_CALL) {
         return self->call;
+    } else if (iface == BINDER_EXT_TYPE_SMS) {
+        return self->sms;
     } else {
         return BINDER_EXT_SLOT_CLASS(PARENT_CLASS)->get_interface(slot, iface);
     }
@@ -123,6 +127,7 @@ qti_slot_new(
     if (self->radio_ext) {
         self->ims = qti_ims_new(radio_slot, self->radio_ext);
         self->call = qti_ims_call_new(self->radio_ext);
+        self->sms = qti_ims_sms_new(self->radio_ext);
     } else {
         DBG("slot->radio_ext is null ");
     }
