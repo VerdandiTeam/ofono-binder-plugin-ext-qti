@@ -407,7 +407,7 @@ qti_radio_ext_read_call_state_info(
     for (gsize i = 0; i < count; i++) {
         QtiRadioCallInfo* call_info = &call_info_array[i];
         BinderExtCallInfo* dest = mtk_ims_call_info_new(call_info->index, 0, call_info->number, call_info->name);
-        
+
         g_ptr_array_add(call_ext_info_array, dest);
     }
 
@@ -823,8 +823,17 @@ qti_radio_ext_new_with_version(
 
             if (desc->version <= max_version) {
                 char* fqname = g_strconcat(desc->radio, "/", slot, NULL);
-                GBinderRemoteObject* obj = /* autoreleased */
-                    gbinder_servicemanager_get_service_sync(sm, fqname, NULL);
+                // try to connect to the service 5 times
+                // service might not be ready yet
+                GBinderRemoteObject* obj = NULL;
+                for (int i = 0; i < 5; i++) {
+                    obj = gbinder_servicemanager_get_service_sync(sm, fqname, NULL);
+                    if (obj) {
+                        break;
+                    }
+                    // wait 500ms before trying again
+                    g_usleep(500000);
+                }
 
                 if (obj) {
                     DBG("Connected to %s", fqname);
@@ -947,7 +956,7 @@ qti_radio_ext_dial_args(
     //gint32 clir = va_arg(va, gint32);
 
     // for some reason, clir from binder is wrong, so we use default
-    gint32 clir = RADIO_CLIR_DEFAULT; 
+    gint32 clir = RADIO_CLIR_DEFAULT;
 
     static const GBinderWriterField qti_radio_dial_request_f[] = {
         GBINDER_WRITER_FIELD_HIDL_STRING
@@ -983,7 +992,7 @@ qti_radio_ext_dial_args(
         dial_request_writer->presentation = QTI_RADIO_IP_PRESENTATION_NUM_ALLOWED;
         break;
     }
-    
+
     dial_request_writer->call_details.call_type = QTI_RADIO_CALL_TYPE_VOICE;
     dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_UNKNOWN;
     dial_request_writer->call_details.extras_length = 0;
@@ -1087,7 +1096,7 @@ qti_radio_ext_hangup_args(
     static const GBinderWriterField qti_radio_hangup_request_info_f[] = {
         GBINDER_WRITER_FIELD_HIDL_STRING
             (QtiRadioHangupRequestInfo, conn_uri),
-        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE 
+        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
             (QtiRadioHangupRequestInfo, fail_cause_response.errorinfo), // we are not going to use this, so byte is fine
         GBINDER_WRITER_FIELD_HIDL_STRING
             (QtiRadioHangupRequestInfo, fail_cause_response.network_error_string),
