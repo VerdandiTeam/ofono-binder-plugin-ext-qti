@@ -330,6 +330,11 @@ qti_ims_call_hangup(
     GDestroyNotify destroy,
     void* user_data)
 {
+    // eh, we can use built in hangup
+    // some devices may not support this, so we need to implement
+    // it eventually
+    return 0;
+
     QtiImsCall* self = THIS(ext);
 
     QtiImsCallResultRequest* req = qti_ims_call_result_request_new(ext,
