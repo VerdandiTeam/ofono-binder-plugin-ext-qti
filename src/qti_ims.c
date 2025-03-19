@@ -262,7 +262,7 @@ qti_ims_set_registration(
         qti_ims_result_request_destroy, req);
 
     DBG("%s %s", self->slot, enabled ? "on" : "off");
-    if (enabled) {
+    if (id) {
         return id;
     } else {
         qti_ims_result_request_free(req);
