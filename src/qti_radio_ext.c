@@ -149,7 +149,8 @@ static
 guint
 qti_radio_ext_new_req_id()
 {
-    static guint last_id = 0;
+    // Start from 1
+    static guint last_id = 1;
     return last_id++;
 }
 
