@@ -237,8 +237,6 @@ qti_ims_call_result_response(
     }
 
     DBG("qti_ims_call_result_response %d", result);
-
-    qti_ims_call_result_request_unref(req);
 }
 
 static
