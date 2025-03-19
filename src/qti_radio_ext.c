@@ -577,7 +577,7 @@ qti_radio_ext_result_response(
         result = -1;
     }
     if (result_req->complete) {
-        result_req->complete(self, result, args, req->user_data);
+        result_req->complete(self, result, &reader, req->user_data);
     }
 }
 
