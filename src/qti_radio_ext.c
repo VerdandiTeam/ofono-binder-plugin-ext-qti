@@ -1114,12 +1114,27 @@ qti_radio_ext_hangup_args(
     // hangup(HangupRequestInfo hangup);
     QtiRadioHangupRequestInfo* hangup_request_writer = gbinder_writer_new0(args, QtiRadioHangupRequestInfo);
 
+    // empty vec
+    GBinderHidlVec* empty_vec = gbinder_writer_new0(args, GBinderHidlVec);
+
     hangup_request_writer->conn_index = call_id;
     hangup_request_writer->has_multi_party = FALSE;
     hangup_request_writer->has_fail_cause_response = FALSE;
     hangup_request_writer->multi_party = FALSE;
-    hangup_request_writer->conn_uri.len = 0;
-    hangup_request_writer->conn_uri.owns_buffer = FALSE;
+    hangup_request_writer->conf_id = 0;
+
+    hangup_request_writer->fail_cause_response.errorinfo.count = 0;
+    hangup_request_writer->fail_cause_response.errorinfo.data.ptr = empty_vec;
+    hangup_request_writer->fail_cause_response.errorinfo.owns_buffer = TRUE;
+
+    hangup_request_writer->fail_cause_response.fail_cause = 0;
+    hangup_request_writer->fail_cause_response.has_error_details = FALSE;
+
+    hangup_request_writer->fail_cause_response.error_details.error_code = 0;
+
+    binder_copy_hidl_string(args, &hangup_request_writer->conn_uri, NULL);
+    binder_copy_hidl_string(args, &hangup_request_writer->fail_cause_response.network_error_string, NULL);
+    binder_copy_hidl_string(args, &hangup_request_writer->fail_cause_response.error_details.error_string, NULL);
 
     gbinder_writer_append_struct(args, hangup_request_writer,
             &qti_radio_hangup_request_info_t, NULL);
