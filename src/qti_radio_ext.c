@@ -368,7 +368,7 @@ qti_ims_call_radio_state_to_state(
 
 static
 BinderExtCallInfo*
-mtk_ims_call_info_new(
+qti_ims_call_info_new(
     guint call_id,
     BINDER_EXT_CALL_STATE state,
     GBinderHidlString number,
@@ -407,7 +407,7 @@ qti_radio_ext_read_call_state_info(
 
     for (gsize i = 0; i < count; i++) {
         QtiRadioCallInfo* call_info = &call_info_array[i];
-        BinderExtCallInfo* dest = mtk_ims_call_info_new(call_info->index, 0, call_info->number, call_info->name);
+        BinderExtCallInfo* dest = qti_ims_call_info_new(call_info->index, call_info->state, call_info->number, call_info->name);
 
         g_ptr_array_add(call_ext_info_array, dest);
     }
