@@ -127,8 +127,10 @@ qti_ims_result_request_complete(
 {
     QtiImsResultRequest* req = user_data;
 
-    req->complete(req->ext, result ? BINDER_EXT_IMS_RESULT_ERROR :
-        BINDER_EXT_IMS_RESULT_OK, req->user_data);
+    if (req->complete) {
+        req->complete(req->ext, result ? BINDER_EXT_IMS_RESULT_ERROR :
+            BINDER_EXT_IMS_RESULT_OK, req->user_data);
+    }
 }
 
 static

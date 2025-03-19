@@ -43,6 +43,9 @@
 
 typedef struct qti_radio_ext QtiRadioExt;
 
+typedef void (*QtiImsGetRegStatusFunc)(
+    BinderExtIms* ext, void* user_data);
+
 BinderExtIms*
 qti_ims_new(
     const char* slot,
