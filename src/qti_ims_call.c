@@ -260,7 +260,6 @@ qti_ims_call_dial(
 
     if (id) {
         req->id = id;
-        req->id_mapped = id;
         g_hash_table_insert(self->id_map, ID_KEY(id), ID_VALUE(id));
     } else {
         qti_ims_call_result_request_free(req);
@@ -296,7 +295,6 @@ qti_ims_call_answer(
 
     if (id) {
         req->id = id;
-        req->id_mapped = id;
         g_hash_table_insert(self->id_map, ID_KEY(id), ID_VALUE(id));
     } else {
         qti_ims_call_result_request_free(req);
@@ -347,7 +345,6 @@ qti_ims_call_hangup(
 
     if (id) {
         req->id = id;
-        req->id_mapped = id;
         g_hash_table_insert(self->id_map, ID_KEY(id), ID_VALUE(id));
     } else {
         qti_ims_call_result_request_free(req);
