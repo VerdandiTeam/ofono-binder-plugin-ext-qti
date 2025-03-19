@@ -75,10 +75,12 @@ G_IMPLEMENT_INTERFACE(BINDER_EXT_TYPE_IMS, qti_ims_iface_init))
 
 enum qti_ims_signal {
     SIGNAL_STATE_CHANGED,
+    SIGNAL_GET_STATE,
     SIGNAL_COUNT
 };
 
 #define SIGNAL_STATE_CHANGED_NAME    "qti-ims-state-changed"
+#define SIGNAL_GET_STATE_NAME        "qti-ims-get-state"
 
 static guint qti_ims_signals[SIGNAL_COUNT] = { 0 };
 
@@ -190,21 +192,16 @@ qti_ims_reg_status_response(
     gbinder_reader_copy(&reader_copy, reader);
     const QtiRadioRegInfo* info = qti_radio_ext_read_ims_reg_status_info(radio_ext, &reader_copy);
 
-    if (info) {
-        state = info->state;
+    if (!info) {
+        DBG("Failed to parse QtiRadioRegInfo");
+        return;
     }
 
-    const char *uri = info->uri.data.str ? info->uri.data.str : "";
-    const char *error_msg = info->error_message.data.str ? info->error_message.data.str : "";
-    DBG("%s: QtiRadioRegInfo response state:%d radiotech:%d"
-        " error_code:%d\n"
-        " uri:%s error_msg:%s",
-        info->state,
-        info->radio_tech,
-        info->error_code,
-        uri, error_msg);
+    state = info->state;
 
-    qti_ims_reg_status_changed(radio_ext, state, req->ext);
+    DBG("Get reg state %d now", state);
+
+    qti_ims_reg_status_changed(radio_ext, state, req->user_data);
 }
 
 /*==========================================================================*
@@ -222,7 +219,23 @@ qti_ims_get_state(
     return self->ims_state;
 }
 
-// trun BINDER_EXT_IMS_REGISTRATION to QTI
+static
+void
+qti_ims_get_registrations(
+    BinderExtIms* ext, void* user_data)
+{
+    QtiIms* self = THIS(ext);
+
+    // We should always check for updated state
+    // get updated state
+    QtiImsResultRequest* req = qti_ims_result_request_new(ext,
+        NULL, NULL, self);
+    qti_radio_ext_get_ims_reg_state(self->radio_ext,
+        qti_ims_reg_status_response,
+        qti_ims_result_request_destroy, req);
+
+    DBG("Get reg state %d", self->ims_state);
+}
 
 static
 guint
@@ -235,6 +248,9 @@ qti_ims_set_registration(
 {
     QtiIms* self = THIS(ext);
     const gboolean enabled = (registration != BINDER_EXT_IMS_REGISTRATION_OFF);
+
+    // update the state
+    g_signal_emit(self, qti_ims_signals[SIGNAL_GET_STATE], 0);
 
     QtiImsResultRequest* req = qti_ims_result_request_new(ext,
         complete, destroy, user_data);
@@ -283,6 +299,17 @@ qti_ims_add_state_handler(
 }
 
 static
+gulong
+qti_ims_add_get_state_handler(
+    QtiIms* self,
+    QtiImsGetRegStatusFunc handler)
+{
+    DBG("%s", self->slot);
+    return G_LIKELY(handler) ? g_signal_connect(self,
+        SIGNAL_GET_STATE_NAME, G_CALLBACK(handler), self) : 0;
+}
+
+static
 void
 qti_ims_iface_init(
     BinderExtImsInterface* iface)
@@ -317,14 +344,9 @@ qti_ims_new(
     if (self->radio_ext) {
         qti_radio_ext_add_ims_reg_status_handler(self->radio_ext,
             qti_ims_reg_status_changed, self);
-
-        // get updated state
-        //QtiImsResultRequest* req = qti_ims_result_request_new(self,
-        //    complete, destroy, user_data);
-        //qti_radio_ext_get_ims_reg_state(self->radio_ext,
-        //    qti_ims_reg_status_response,
-        //    qti_ims_result_request_destroy, NULL);
     }
+
+    qti_ims_add_get_state_handler(self, qti_ims_get_registrations);
 
     return BINDER_EXT_IMS(self);
 }
@@ -360,6 +382,9 @@ qti_ims_class_init(
     G_OBJECT_CLASS(klass)->finalize = qti_ims_finalize;
     qti_ims_signals[SIGNAL_STATE_CHANGED] =
         g_signal_new(SIGNAL_STATE_CHANGED_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+    qti_ims_signals[SIGNAL_GET_STATE] =
+        g_signal_new(SIGNAL_GET_STATE_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
 }
 
