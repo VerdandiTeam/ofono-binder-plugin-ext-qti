@@ -9,7 +9,6 @@ Build-Depends: debhelper-compat (= 12),
                libgbinder-radio1-dev,
                ofono-sailfish-dev (>= 1.29+git8-0ubports1~),
                libofonobinderpluginext-dev,
-               libandroid-properties-dev,
 Standards-Version: 3.8.4
 
 Package: ofono-binder-plugin-ext-qti

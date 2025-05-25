@@ -14,7 +14,6 @@ BuildRequires: pkgconfig(glib-2.0)
 BuildRequires: pkgconfig(libglibutil)
 BuildRequires: pkgconfig(libgbinder-radio)
 BuildRequires: pkgconfig(libofonobinderpluginext)
-BuildRequires: libhybris-devel
 
 %define plugin_dir %(pkg-config ofono --variable=plugindir)
 %define config_dir /etc/ofono/binder.d/
