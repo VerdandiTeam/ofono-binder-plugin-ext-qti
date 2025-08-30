@@ -39,12 +39,35 @@
     gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
 typedef GObjectClass QtiImsSmsClass;
+typedef struct qti_ims_sms_pending_ack {
+    guint msg_ref;
+    gboolean processed;
+} QtiImsSmssPendingAck;
+
+typedef struct qti_ims_sms_queued_incoming {
+    void* pdu;
+    guint pdu_len;
+    guint msg_ref;
+} QtiImsSmsQueuedIncoming;
+
+typedef struct qti_ims_sms_queued_report {
+    void* pdu;
+    gsize pdu_len;
+    guint32 message_ref;
+} QtiImsSmsQueuedReport;
+
 typedef struct qti_ims_sms {
     GObject parent;
     GUtilIdlePool* pool;
     QtiRadioExt* radio_ext;
     GPtrArray* sms;
     GHashTable* id_map;
+    GQueue* pending_ack_queue;  /* Queue for incoming SMS message refs (FIFO) */
+    guint next_msg_ref;         /* Counter for generating message references */
+    GQueue* incoming_queue;     /* Queue for incoming SMS when no handlers connected */
+    GQueue* report_queue;       /* Queue for SMS reports when no handlers connected */
+    gboolean has_incoming_handler;  /* Track if incoming handler is connected */
+    gboolean has_report_handler;    /* Track if report handler is connected */
 } QtiImsSms;
 
 typedef struct qti_ims_sms_result_request {
@@ -75,15 +98,129 @@ G_IMPLEMENT_INTERFACE(BINDER_EXT_TYPE_SMS, qti_ims_sms_iface_init))
 #define ID_VALUE(id) GUINT_TO_POINTER(id)
 
 enum qti_ims_sms_signal {
-    SIGNAL_SMS_STATE_CHANGED,
+    SIGNAL_SMS_REPORT,
     SIGNAL_SMS_RECEIVED,
     SIGNAL_COUNT
 };
 
-#define SIGNAL_SMS_STATE_CHANGED_NAME    "qti-ims-sms-state-changed"
+#define SIGNAL_SMS_REPORT_NAME           "qti-ims-sms-report"
 #define SIGNAL_SMS_RECEIVED_NAME         "qti-ims-sms-received"
 
 static guint qti_ims_sms_signals[SIGNAL_COUNT] = { 0 };
+
+static
+QtiImsSmssPendingAck*
+qti_ims_sms_pending_ack_new(
+    guint msg_ref)
+{
+    QtiImsSmssPendingAck* ack = g_slice_new0(QtiImsSmssPendingAck);
+    ack->msg_ref = msg_ref;
+    ack->processed = FALSE;
+    return ack;
+}
+
+static
+void
+qti_ims_sms_pending_ack_free(
+    QtiImsSmssPendingAck* ack)
+{
+    if (ack) {
+        gutil_slice_free(ack);
+    }
+}
+
+static
+QtiImsSmsQueuedIncoming*
+qti_ims_sms_queued_incoming_new(
+    const void* pdu,
+    guint pdu_len,
+    guint msg_ref)
+{
+    QtiImsSmsQueuedIncoming* incoming = g_slice_new0(QtiImsSmsQueuedIncoming);
+    incoming->pdu = g_memdup2(pdu, pdu_len);
+    incoming->pdu_len = pdu_len;
+    incoming->msg_ref = msg_ref;
+    return incoming;
+}
+
+static
+void
+qti_ims_sms_queued_incoming_free(
+    QtiImsSmsQueuedIncoming* incoming)
+{
+    if (incoming) {
+        g_free(incoming->pdu);
+        gutil_slice_free(incoming);
+    }
+}
+
+static
+QtiImsSmsQueuedReport*
+qti_ims_sms_queued_report_new(
+    const void* pdu,
+    gsize pdu_len,
+    guint32 message_ref)
+{
+    QtiImsSmsQueuedReport* report = g_slice_new0(QtiImsSmsQueuedReport);
+    report->pdu = g_memdup2(pdu, pdu_len);
+    report->pdu_len = pdu_len;
+    report->message_ref = message_ref;
+    return report;
+}
+
+static
+void
+qti_ims_sms_queued_report_free(
+    QtiImsSmsQueuedReport* report)
+{
+    if (report) {
+        g_free(report->pdu);
+        gutil_slice_free(report);
+    }
+}
+
+static
+void
+qti_ims_sms_process_queued_incoming(
+    QtiImsSms* self)
+{
+    QtiImsSmsQueuedIncoming* incoming;
+    
+    DBG("Processing queued incoming SMS, queue_length=%u", 
+        g_queue_get_length(self->incoming_queue));
+    
+    while ((incoming = g_queue_pop_head(self->incoming_queue)) != NULL) {
+        DBG("Processing queued incoming SMS: pdu_len=%u, msg_ref=%u", 
+            incoming->pdu_len, incoming->msg_ref);
+        
+        g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, 
+                     incoming->pdu, incoming->pdu_len);
+        
+        qti_ims_sms_queued_incoming_free(incoming);
+    }
+}
+
+static
+void
+qti_ims_sms_process_queued_reports(
+    QtiImsSms* self)
+{
+    QtiImsSmsQueuedReport* report;
+    
+    DBG("Processing queued SMS reports, queue_length=%u", 
+        g_queue_get_length(self->report_queue));
+    
+    while ((report = g_queue_pop_head(self->report_queue)) != NULL) {
+        DBG("Processing queued SMS report: message_ref=%u, pdu_len=%zu", 
+            report->message_ref, report->pdu_len);
+        
+        g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, 
+                     report->pdu, report->pdu_len, report->message_ref);
+        
+        qti_ims_sms_queued_report_free(report);
+    }
+}
+
 
 static
 QtiImsSmsResultRequest*
@@ -183,13 +320,61 @@ qti_ims_sms_incoming_sms_handler(
     guint pdu_len,
     void* user_data)
 {
-    QtiImsSms* self = user_data;
+    QtiImsSms* self = THIS(user_data);
 
-    DBG("Incoming SMS!!!: pdu_len=%d", pdu_len);
+    /* Generate a message reference for this incoming SMS */
+    guint msg_ref = ++self->next_msg_ref;
+    
+    /* Store the message reference in the pending ack queue */
+    QtiImsSmssPendingAck* pending_ack = qti_ims_sms_pending_ack_new(msg_ref);
+    g_queue_push_tail(self->pending_ack_queue, pending_ack);
 
-    g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, pdu, pdu_len);
+    DBG("Incoming SMS: pdu_len=%d, assigned msg_ref=%u, queue_length=%u", 
+        pdu_len, msg_ref, g_queue_get_length(self->pending_ack_queue));
+
+    /* Check if there are any connected handlers */
+    if (self->has_incoming_handler && g_signal_has_handler_pending(self, 
+            qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, FALSE)) {
+        /* Emit signal immediately if handlers are connected */
+        g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, pdu, pdu_len);
+    } else {
+        /* Queue the SMS for later processing */
+        QtiImsSmsQueuedIncoming* queued = qti_ims_sms_queued_incoming_new(pdu, pdu_len, msg_ref);
+        g_queue_push_tail(self->incoming_queue, queued);
+        
+        DBG("No incoming SMS handlers connected, queuing SMS (queue_length=%u)", 
+            g_queue_get_length(self->incoming_queue));
+    }
 }
 
+static
+void
+qti_ims_sms_report_handler(
+    QtiRadioExt* radio,
+    const void* pdu,
+    gsize pdu_len,
+    guint32 message_ref,
+    void* user_data)
+{
+    QtiImsSms* self = user_data;
+
+    /* Process the SMS report */
+    DBG("SMS report: message_ref=%u, pdu_len=%zu", message_ref, pdu_len);
+
+    /* Check if there are any connected handlers */
+    if (self->has_report_handler && g_signal_has_handler_pending(self, 
+            qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, FALSE)) {
+        /* Emit signal immediately if handlers are connected */
+        g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, pdu, pdu_len, message_ref);
+    } else {
+        /* Queue the report for later processing */
+        QtiImsSmsQueuedReport* queued = qti_ims_sms_queued_report_new(pdu, pdu_len, message_ref);
+        g_queue_push_tail(self->report_queue, queued);
+        
+        DBG("No SMS report handlers connected, queuing report (queue_length=%u)", 
+            g_queue_get_length(self->report_queue));
+    }
+}
 
 /*==========================================================================*
  * BinderExtSmsInterface
@@ -215,7 +400,7 @@ qti_ims_sms_send(
     guint id = qti_radio_ext_send_ims_sms(self->radio_ext, smsc, pdu, pdu_len, msg_ref, flags,
         qti_ims_sms_result_request_response, qti_ims_sms_result_request_destroy, req);
 
-    DBG("Sending SMS: pdu_len=%u, msg_ref=%u", pdu_len, msg_ref);
+    DBG("Sending SMS: pdu_len=%zu, msg_ref=%u", pdu_len, msg_ref);
 
     if (id) {
         req->id = id;
@@ -272,17 +457,29 @@ qti_ims_sms_ack_incoming(
     gboolean ok)
 {
     QtiImsSms* self = THIS(ext);
+    QtiImsSmssPendingAck* pending_ack;
+    guint msg_ref = 0;
+
+    /* Get the next pending acknowledgment from the queue (FIFO) */
+    pending_ack = g_queue_pop_head(self->pending_ack_queue);
+    
+    if (pending_ack) {
+        msg_ref = pending_ack->msg_ref;
+        qti_ims_sms_pending_ack_free(pending_ack);
+        
+        DBG("Acknowledging incoming SMS from queue: msg_ref=%u, ok=%d, remaining_queue_length=%u", 
+            msg_ref, ok, g_queue_get_length(self->pending_ack_queue));
+    } else {
+        /* Fallback to the old behavior if queue is empty */
+        msg_ref = -1;
+        DBG("No pending SMS in queue, using fallback msg_ref=-1, ok=%d", ok);
+    }
 
     QtiImsSmsResultRequest* req = qti_ims_sms_result_request_new(ext,
         NULL, NULL, NULL);
 
-    // We *should* have message reference, but we don't
-    // so we use -1, we have to change upstream to fix this
-    // TODO: fix this
-    guint id = qti_radio_ext_acknowledge_sms(self->radio_ext, -1, ok,
+    guint id = qti_radio_ext_acknowledge_sms(self->radio_ext, msg_ref, ok,
         qti_ims_sms_result_request_response, qti_ims_sms_result_request_destroy, req);
-
-    DBG("Acknowledging incoming SMS: ok=%d", ok);
 
     if (id) {
         req->id = id;
@@ -299,7 +496,18 @@ qti_ims_sms_add_report_handler(
     BinderExtSmsReportFunc handler,
     void* user_data)
 {
-    return g_signal_connect(ext, SIGNAL_SMS_STATE_CHANGED_NAME, G_CALLBACK(handler), user_data);
+    QtiImsSms* self = THIS(ext);
+    
+    DBG("Adding SMS report handler");
+    gulong id = g_signal_connect(ext, SIGNAL_SMS_REPORT_NAME, G_CALLBACK(handler), user_data);
+    
+    /* Mark that we have a report handler and process any queued reports */
+    if (!self->has_report_handler) {
+        self->has_report_handler = TRUE;
+        qti_ims_sms_process_queued_reports(self);
+    }
+    
+    return id;
 }
 
 static
@@ -309,7 +517,19 @@ qti_ims_sms_add_incoming_handler(
     BinderExtSmsIncomingFunc handler,
     void* user_data)
 {
-    return g_signal_connect(ext, SIGNAL_SMS_RECEIVED_NAME, G_CALLBACK(handler), user_data);
+    QtiImsSms* self = THIS(ext);
+    
+    DBG("Adding incoming SMS handler");
+
+    gulong id = g_signal_connect(ext, SIGNAL_SMS_RECEIVED_NAME, G_CALLBACK(handler), user_data);
+    
+    /* Mark that we have an incoming handler and process any queued SMS */
+    if (!self->has_incoming_handler) {
+        self->has_incoming_handler = TRUE;
+        qti_ims_sms_process_queued_incoming(self);
+    }
+    
+    return id;
 }
 
 static
@@ -318,7 +538,20 @@ qti_ims_sms_remove_handler(
     BinderExtSms* ext,
     gulong id)
 {
+    QtiImsSms* self = THIS(ext);
+    
     g_signal_handler_disconnect(ext, id);
+    
+    /* Check if we still have handlers connected */
+    if (!g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, FALSE)) {
+        self->has_incoming_handler = FALSE;
+        DBG("No more incoming SMS handlers connected");
+    }
+    
+    if (!g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, FALSE)) {
+        self->has_report_handler = FALSE;
+        DBG("No more SMS report handlers connected");
+    }
 }
 
 void
@@ -350,8 +583,15 @@ qti_ims_sms_new(
 
         self->radio_ext = qti_radio_ext_ref(radio_ext);
         self->sms = g_ptr_array_new_with_free_func(g_free);
+        self->pending_ack_queue = g_queue_new();
+        self->incoming_queue = g_queue_new();
+        self->report_queue = g_queue_new();
+        self->next_msg_ref = 0;
+        self->has_incoming_handler = FALSE;
+        self->has_report_handler = FALSE;
 
         qti_radio_ext_add_incoming_sms_handler(radio_ext, qti_ims_sms_incoming_sms_handler, self);
+        qti_radio_ext_add_sms_report_handler(radio_ext, qti_ims_sms_report_handler, self);
 
         return BINDER_EXT_SMS(self);
     }
@@ -368,9 +608,38 @@ qti_ims_sms_finalize(
     GObject* object)
 {
     QtiImsSms* self = THIS(object);
+    
+    /* Clean up the pending ack queue */
+    if (self->pending_ack_queue) {
+        QtiImsSmssPendingAck* pending_ack;
+        while ((pending_ack = g_queue_pop_head(self->pending_ack_queue)) != NULL) {
+            qti_ims_sms_pending_ack_free(pending_ack);
+        }
+        g_queue_free(self->pending_ack_queue);
+    }
+    
+    /* Clean up the incoming SMS queue */
+    if (self->incoming_queue) {
+        QtiImsSmsQueuedIncoming* incoming;
+        while ((incoming = g_queue_pop_head(self->incoming_queue)) != NULL) {
+            qti_ims_sms_queued_incoming_free(incoming);
+        }
+        g_queue_free(self->incoming_queue);
+    }
+    
+    /* Clean up the SMS report queue */
+    if (self->report_queue) {
+        QtiImsSmsQueuedReport* report;
+        while ((report = g_queue_pop_head(self->report_queue)) != NULL) {
+            qti_ims_sms_queued_report_free(report);
+        }
+        g_queue_free(self->report_queue);
+    }
+    
     qti_radio_ext_unref(self->radio_ext);
     gutil_idle_pool_destroy(self->pool);
     g_ptr_array_free(self->sms, TRUE);
+    g_hash_table_destroy(self->id_map);
     G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }
 
@@ -380,6 +649,7 @@ qti_ims_sms_init(
     QtiImsSms* self)
 {
     self->pool = gutil_idle_pool_new();
+    self->id_map = g_hash_table_new(g_direct_hash, g_direct_equal);
 }
 
 static
@@ -390,9 +660,10 @@ qti_ims_sms_class_init(
     GType type = G_OBJECT_CLASS_TYPE(klass);
 
     G_OBJECT_CLASS(klass)->finalize = qti_ims_sms_finalize;
-    qti_ims_sms_signals[SIGNAL_SMS_STATE_CHANGED] =
-        g_signal_new(SIGNAL_SMS_STATE_CHANGED_NAME, type,
-            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+    qti_ims_sms_signals[SIGNAL_SMS_REPORT] =
+        g_signal_new(SIGNAL_SMS_REPORT_NAME, type,
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2
+            , G_TYPE_POINTER, G_TYPE_UINT);
     qti_ims_sms_signals[SIGNAL_SMS_RECEIVED] =
         g_signal_new(SIGNAL_SMS_RECEIVED_NAME, type,
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
