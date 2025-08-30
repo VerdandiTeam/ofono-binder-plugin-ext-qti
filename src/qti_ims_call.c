@@ -189,7 +189,7 @@ qti_ims_call_handle_call_info(
             call->state = info->state;
         } else {
             // add a new call
-            BinderExtCallInfo* copy = g_memdup(info, sizeof(BinderExtCallInfo));
+            BinderExtCallInfo* copy = g_memdup2(info, sizeof(BinderExtCallInfo));
             copy->number = g_strdup(info->number);
             copy->name = g_strdup(info->name);
             g_ptr_array_add(self->calls, copy);

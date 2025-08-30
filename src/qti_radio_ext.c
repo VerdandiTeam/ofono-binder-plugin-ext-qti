@@ -34,6 +34,7 @@
 #include <gutil_log.h>
 #include <gutil_macros.h>
 
+#undef DBG
 #define DBG(fmt, ...) \
     gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
@@ -406,14 +407,14 @@ qti_ims_call_info_new(
 static
 GPtrArray*
 qti_radio_ext_read_call_state_info(
-    QtiRadioCallInfo* call_info_array,
+    const QtiRadioCallInfo* call_info_array,
     gsize count)
 {
     // array of QtiRadioCallInfo
     GPtrArray* call_ext_info_array = g_ptr_array_new_with_free_func(g_free);
 
     for (gsize i = 0; i < count; i++) {
-        QtiRadioCallInfo* call_info = &call_info_array[i];
+        const QtiRadioCallInfo* call_info = &call_info_array[i];
         BinderExtCallInfo* dest = qti_ims_call_info_new(call_info->index, call_info->state, call_info->number, call_info->name);
 
         g_ptr_array_add(call_ext_info_array, dest);
@@ -430,7 +431,7 @@ qti_radio_ext_handle_call_state_indication(
     const GBinderReader* args)
 {
     /* callInfoIndication(vec<CallInfo> callList) */
-    QtiRadioCallInfo* call_infos;
+    const QtiRadioCallInfo* call_infos;
     GBinderReader reader;
     gsize count;
 
@@ -462,7 +463,7 @@ qti_radio_ext_handle_incoming_sms_indication(
     const GBinderReader* args)
 {
     GBinderReader reader;
-    QtiRadioIncomingImsSms* sms;
+    const QtiRadioIncomingImsSms* sms;
 
     gbinder_reader_copy(&reader, args);
     sms = gbinder_reader_read_hidl_struct(&reader, QtiRadioIncomingImsSms);
@@ -474,7 +475,7 @@ qti_radio_ext_handle_incoming_sms_indication(
         const void* pdu = sms->pdu.data.ptr;
 
         // copy pdu to a new buffer
-        const void* pdu_copy = g_memdup(pdu, pdu_len);
+        const void* pdu_copy = g_memdup2(pdu, pdu_len);
 
         DBG("%s: Incoming SMS indication format:%s verstat:%d pdu_len:%d",
             self->slot, format, verstat, pdu_len);
@@ -504,7 +505,7 @@ qti_radio_ext_handle_sms_report_indication(
     const GBinderReader* args)
 {
     GBinderReader reader;
-    QtiRadioImsSmsSendStatusReport* report;
+    const QtiRadioImsSmsSendStatusReport* report;
 
     gbinder_reader_copy(&reader, args);
     report = gbinder_reader_read_hidl_struct(&reader, QtiRadioImsSmsSendStatusReport);
@@ -516,7 +517,7 @@ qti_radio_ext_handle_sms_report_indication(
         const void* pdu = report->pdu.data.ptr;
 
         // copy pdu to a new buffer
-        const void* pdu_copy = g_memdup(pdu, pdu_len);
+        const void* pdu_copy = g_memdup2(pdu, pdu_len);
 
         DBG("%s: SMS status report indication message_ref:%d format:%s pdu_len:%d",
             self->slot, message_ref, format, pdu_len);
@@ -1300,8 +1301,8 @@ qti_radio_ext_send_ims_sms_args(
     sms->message_ref = msg_ref;
 
     // I guess?
-    // we don't need to retry as ofono will handle it
-    sms->shall_retry = FALSE;
+    // True if BINDER_EXT_SMS_SEND_RETRY is set
+    sms->shall_retry = BINDER_EXT_SMS_SEND_RETRY == (flags & BINDER_EXT_SMS_SEND_RETRY);
 
     binder_copy_hidl_string(args, &sms->format, "3gpp");
     binder_copy_hidl_string(args, &sms->smsc, smsc);

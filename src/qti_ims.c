@@ -48,7 +48,7 @@
 #include <gutil_log.h>
 #include <gbinder.h>
 
-#define DBG(fmt, ...) \
+#define IMS_DBG(fmt, ...) \
     gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
 
@@ -185,7 +185,7 @@ qti_ims_reg_status_response(
     GBinderReader* reader,
     void* user_data)
 {
-    DBG("qti_ims_reg_status_response");
+    IMS_DBG("qti_ims_reg_status_response");
     QtiImsResultRequest* req = user_data;
 
     QTI_RADIO_REG_STATE state = QTI_RADIO_REG_STATE_INVALID;
