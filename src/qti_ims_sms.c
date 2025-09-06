@@ -67,8 +67,6 @@ typedef struct qti_ims_sms {
     guint next_msg_ref;         /* Counter for generating message references */
     GQueue* incoming_queue;     /* Queue for incoming SMS when no handlers connected */
     GQueue* report_queue;       /* Queue for SMS reports when no handlers connected */
-    gboolean has_incoming_handler;  /* Track if incoming handler is connected */
-    gboolean has_report_handler;    /* Track if report handler is connected */
 } QtiImsSms;
 
 typedef struct qti_ims_sms_result_request {
@@ -114,7 +112,7 @@ QtiImsSmssPendingAck*
 qti_ims_sms_pending_ack_new(
     guint msg_ref)
 {
-    QtiImsSmssPendingAck* ack = g_slice_new0(QtiImsSmssPendingAck);
+    QtiImsSmssPendingAck* ack = g_new0(QtiImsSmssPendingAck, 1);
     ack->msg_ref = msg_ref;
     ack->processed = FALSE;
     return ack;
@@ -126,7 +124,7 @@ qti_ims_sms_pending_ack_free(
     QtiImsSmssPendingAck* ack)
 {
     if (ack) {
-        gutil_slice_free(ack);
+        g_free(ack);
     }
 }
 
@@ -137,7 +135,7 @@ qti_ims_sms_queued_incoming_new(
     guint pdu_len,
     guint msg_ref)
 {
-    QtiImsSmsQueuedIncoming* incoming = g_slice_new0(QtiImsSmsQueuedIncoming);
+    QtiImsSmsQueuedIncoming* incoming = g_new0(QtiImsSmsQueuedIncoming, 1);
     incoming->pdu = g_memdup2(pdu, pdu_len);
     incoming->pdu_len = pdu_len;
     incoming->msg_ref = msg_ref;
@@ -151,7 +149,7 @@ qti_ims_sms_queued_incoming_free(
 {
     if (incoming) {
         g_free(incoming->pdu);
-        gutil_slice_free(incoming);
+        g_free(incoming);
     }
 }
 
@@ -162,7 +160,7 @@ qti_ims_sms_queued_report_new(
     gsize pdu_len,
     guint32 message_ref)
 {
-    QtiImsSmsQueuedReport* report = g_slice_new0(QtiImsSmsQueuedReport);
+    QtiImsSmsQueuedReport* report = g_new0(QtiImsSmsQueuedReport, 1);
     report->pdu = g_memdup2(pdu, pdu_len);
     report->pdu_len = pdu_len;
     report->message_ref = message_ref;
@@ -176,7 +174,7 @@ qti_ims_sms_queued_report_free(
 {
     if (report) {
         g_free(report->pdu);
-        gutil_slice_free(report);
+        g_free(report);
     }
 }
 
@@ -232,7 +230,7 @@ qti_ims_sms_result_request_new(
     void* user_data)
 {
     QtiImsSmsResultRequest* req =
-        g_slice_new0(QtiImsSmsResultRequest);
+        g_new0(QtiImsSmsResultRequest, 1);
 
     req->ref_count = 1;
     req->ext = binder_ext_sms_ref(self);
@@ -256,7 +254,7 @@ qti_ims_sms_result_request_free(
         g_hash_table_remove(THIS(ext)->id_map, ID_KEY(req->id_mapped));
     }
     binder_ext_sms_unref(ext);
-    gutil_slice_free(req);
+    g_free(req);
 }
 
 static
@@ -334,8 +332,7 @@ qti_ims_sms_incoming_sms_handler(
         pdu_len, msg_ref, g_queue_get_length(self->pending_ack_queue));
 
     /* Check if there are any connected handlers */
-    if (self->has_incoming_handler && g_signal_has_handler_pending(self, 
-            qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, FALSE)) {
+    if (g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, FALSE)) {
         /* Emit signal immediately if handlers are connected */
         g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, pdu, pdu_len);
     } else {
@@ -363,8 +360,7 @@ qti_ims_sms_report_handler(
     DBG("SMS report: message_ref=%u, pdu_len=%zu", message_ref, pdu_len);
 
     /* Check if there are any connected handlers */
-    if (self->has_report_handler && g_signal_has_handler_pending(self, 
-            qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, FALSE)) {
+    if (g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, FALSE)) {
         /* Emit signal immediately if handlers are connected */
         g_signal_emit(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, pdu, pdu_len, message_ref);
     } else {
@@ -500,11 +496,14 @@ qti_ims_sms_add_report_handler(
     QtiImsSms* self = THIS(ext);
     
     DBG("Adding SMS report handler");
+    
+    /* Check if this is the first handler being added */
+    gboolean had_handlers = g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, FALSE);
+    
     gulong id = g_signal_connect(ext, SIGNAL_SMS_REPORT_NAME, G_CALLBACK(handler), user_data);
     
-    /* Mark that we have a report handler and process any queued reports */
-    if (!self->has_report_handler) {
-        self->has_report_handler = TRUE;
+    /* Process any queued reports if this is the first handler */
+    if (!had_handlers) {
         qti_ims_sms_process_queued_reports(self);
     }
     
@@ -521,12 +520,14 @@ qti_ims_sms_add_incoming_handler(
     QtiImsSms* self = THIS(ext);
     
     DBG("Adding incoming SMS handler");
+    
+    /* Check if this is the first handler being added */
+    gboolean had_handlers = g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, FALSE);
 
     gulong id = g_signal_connect(ext, SIGNAL_SMS_RECEIVED_NAME, G_CALLBACK(handler), user_data);
     
-    /* Mark that we have an incoming handler and process any queued SMS */
-    if (!self->has_incoming_handler) {
-        self->has_incoming_handler = TRUE;
+    /* Process any queued SMS if this is the first handler */
+    if (!had_handlers) {
         qti_ims_sms_process_queued_incoming(self);
     }
     
@@ -543,14 +544,12 @@ qti_ims_sms_remove_handler(
     
     g_signal_handler_disconnect(ext, id);
     
-    /* Check if we still have handlers connected */
+    /* Log status for debugging */
     if (!g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_RECEIVED], 0, FALSE)) {
-        self->has_incoming_handler = FALSE;
         DBG("No more incoming SMS handlers connected");
     }
     
     if (!g_signal_has_handler_pending(self, qti_ims_sms_signals[SIGNAL_SMS_REPORT], 0, FALSE)) {
-        self->has_report_handler = FALSE;
         DBG("No more SMS report handlers connected");
     }
 }
@@ -588,8 +587,6 @@ qti_ims_sms_new(
         self->incoming_queue = g_queue_new();
         self->report_queue = g_queue_new();
         self->next_msg_ref = 0;
-        self->has_incoming_handler = FALSE;
-        self->has_report_handler = FALSE;
 
         qti_radio_ext_add_incoming_sms_handler(radio_ext, qti_ims_sms_incoming_sms_handler, self);
         qti_radio_ext_add_sms_report_handler(radio_ext, qti_ims_sms_report_handler, self);
@@ -612,29 +609,17 @@ qti_ims_sms_finalize(
     
     /* Clean up the pending ack queue */
     if (self->pending_ack_queue) {
-        QtiImsSmssPendingAck* pending_ack;
-        while ((pending_ack = g_queue_pop_head(self->pending_ack_queue)) != NULL) {
-            qti_ims_sms_pending_ack_free(pending_ack);
-        }
-        g_queue_free(self->pending_ack_queue);
+        g_queue_free_full(self->pending_ack_queue, (GDestroyNotify)qti_ims_sms_pending_ack_free);
     }
     
     /* Clean up the incoming SMS queue */
     if (self->incoming_queue) {
-        QtiImsSmsQueuedIncoming* incoming;
-        while ((incoming = g_queue_pop_head(self->incoming_queue)) != NULL) {
-            qti_ims_sms_queued_incoming_free(incoming);
-        }
-        g_queue_free(self->incoming_queue);
+        g_queue_free_full(self->incoming_queue, (GDestroyNotify)qti_ims_sms_queued_incoming_free);
     }
     
     /* Clean up the SMS report queue */
     if (self->report_queue) {
-        QtiImsSmsQueuedReport* report;
-        while ((report = g_queue_pop_head(self->report_queue)) != NULL) {
-            qti_ims_sms_queued_report_free(report);
-        }
-        g_queue_free(self->report_queue);
+        g_queue_free_full(self->report_queue, (GDestroyNotify)qti_ims_sms_queued_report_free);
     }
     
     qti_radio_ext_unref(self->radio_ext);

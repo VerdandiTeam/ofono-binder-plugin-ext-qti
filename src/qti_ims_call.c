@@ -95,7 +95,7 @@ qti_ims_call_result_request_new(
     void* user_data)
 {
     QtiImsCallResultRequest* req =
-        g_slice_new0(QtiImsCallResultRequest);
+        g_new0(QtiImsCallResultRequest, 1);
 
     req->ref_count = 1;
     req->ext = binder_ext_call_ref(ext);
@@ -119,7 +119,7 @@ qti_ims_call_result_request_free(
         g_hash_table_remove(THIS(ext)->id_map, ID_KEY(req->id_mapped));
     }
     binder_ext_call_unref(ext);
-    gutil_slice_free(req);
+    g_free(req);
 }
 
 static
