@@ -48,6 +48,7 @@
 #include <gutil_log.h>
 #include <gbinder.h>
 
+#undef DBG
 #define DBG(fmt, ...) \
     gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
@@ -99,7 +100,7 @@ qti_ims_result_request_new(
     GDestroyNotify destroy,
     void* user_data)
 {
-    QtiImsResultRequest* req = g_slice_new(QtiImsResultRequest);
+    QtiImsResultRequest* req = g_new(QtiImsResultRequest, 1);
 
     req->ext = binder_ext_ims_ref(ext);
     req->complete = complete;
@@ -114,7 +115,7 @@ qti_ims_result_request_free(
     QtiImsResultRequest* req)
 {
     binder_ext_ims_unref(req->ext);
-    gutil_slice_free(req);
+    g_free(req);
 }
 
 static

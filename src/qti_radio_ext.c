@@ -34,6 +34,7 @@
 #include <gutil_log.h>
 #include <gutil_macros.h>
 
+#undef DBG
 #define DBG(fmt, ...) \
     gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
 
@@ -97,6 +98,7 @@ enum qti_radio_ext_signal {
     SIGNAL_EXT_CALL_STATE_CHANGED,
     SIGNAL_EXT_ON_RING,
     SIGNAL_EXT_ON_INCOMING_SMS,
+    SIGNAL_EXT_ON_SMS_REPORT,
     SIGNAL_COUNT
 };
 
@@ -104,6 +106,7 @@ enum qti_radio_ext_signal {
 #define SIGNAL_EXT_CALL_STATE_CHANGED_NAME          "qti-radio-ext-call-state-changed"
 #define SIGNAL_EXT_ON_RING_NAME                     "qti-radio-ext-on-ring"
 #define SIGNAL_EXT_ON_INCOMING_SMS_NAME             "qti-radio-ext-on-incoming-sms"
+#define SIGNAL_EXT_ON_SMS_REPORT_NAME               "qti-radio-ext-on-sms-report"
 
 static guint qti_radio_ext_signals[SIGNAL_COUNT] = { 0 };
 
@@ -404,14 +407,14 @@ qti_ims_call_info_new(
 static
 GPtrArray*
 qti_radio_ext_read_call_state_info(
-    QtiRadioCallInfo* call_info_array,
+    const QtiRadioCallInfo* call_info_array,
     gsize count)
 {
     // array of QtiRadioCallInfo
     GPtrArray* call_ext_info_array = g_ptr_array_new_with_free_func(g_free);
 
     for (gsize i = 0; i < count; i++) {
-        QtiRadioCallInfo* call_info = &call_info_array[i];
+        const QtiRadioCallInfo* call_info = &call_info_array[i];
         BinderExtCallInfo* dest = qti_ims_call_info_new(call_info->index, call_info->state, call_info->number, call_info->name);
 
         g_ptr_array_add(call_ext_info_array, dest);
@@ -428,7 +431,7 @@ qti_radio_ext_handle_call_state_indication(
     const GBinderReader* args)
 {
     /* callInfoIndication(vec<CallInfo> callList) */
-    QtiRadioCallInfo* call_infos;
+    const QtiRadioCallInfo* call_infos;
     GBinderReader reader;
     gsize count;
 
@@ -460,7 +463,7 @@ qti_radio_ext_handle_incoming_sms_indication(
     const GBinderReader* args)
 {
     GBinderReader reader;
-    QtiRadioIncomingImsSms* sms;
+    const QtiRadioIncomingImsSms* sms;
 
     gbinder_reader_copy(&reader, args);
     sms = gbinder_reader_read_hidl_struct(&reader, QtiRadioIncomingImsSms);
@@ -472,7 +475,7 @@ qti_radio_ext_handle_incoming_sms_indication(
         const void* pdu = sms->pdu.data.ptr;
 
         // copy pdu to a new buffer
-        const void* pdu_copy = g_memdup(pdu, pdu_len);
+        const void* pdu_copy = g_memdup2(pdu, pdu_len);
 
         DBG("%s: Incoming SMS indication format:%s verstat:%d pdu_len:%d",
             self->slot, format, verstat, pdu_len);
@@ -481,6 +484,48 @@ qti_radio_ext_handle_incoming_sms_indication(
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_INCOMING_SMS], 0, pdu_copy, pdu_len);
     } else {
         DBG("%s: failed to parse incoming SMS data", self->slot);
+    }
+}
+
+/*
+
+typedef struct qti_radio_ims_sms_send_status_report {
+    guint32 message_ref RADIO_ALIGNED(4);
+    GBinderHidlString format RADIO_ALIGNED(8);
+    GBinderHidlVec pdu RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioImsSmsSendStatusReport;
+
+*/
+
+// implement sms report
+static
+void
+qti_radio_ext_handle_sms_report_indication(
+    QtiRadioExt* self,
+    const GBinderReader* args)
+{
+    GBinderReader reader;
+    const QtiRadioImsSmsSendStatusReport* report;
+
+    gbinder_reader_copy(&reader, args);
+    report = gbinder_reader_read_hidl_struct(&reader, QtiRadioImsSmsSendStatusReport);
+
+    if (report) {
+        const guint32 message_ref = report->message_ref;
+        const char *format = report->format.data.str ? report->format.data.str : "";
+        const guint32 pdu_len = report->pdu.count;
+        const void* pdu = report->pdu.data.ptr;
+
+        // copy pdu to a new buffer
+        const void* pdu_copy = g_memdup2(pdu, pdu_len);
+
+        DBG("%s: SMS status report indication message_ref:%d format:%s pdu_len:%d",
+            self->slot, message_ref, format, pdu_len);
+        gutil_log_dump(&qti_radio_ext_binder_dump_module, GLOG_LEVEL_VERBOSE, "  ", pdu_copy, pdu_len);
+
+        g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_SMS_REPORT], 0, pdu_copy, pdu_len, message_ref);
+    } else {
+        DBG("%s: failed to parse SMS status report data", self->slot);
     }
 }
 
@@ -527,7 +572,7 @@ qti_radio_ext_indication(
             qti_radio_ext_handle_call_state_indication(self, &args);
             return NULL;
         case QTI_RADIO_IND_SMS_STATUS_REPORT_INDICATION:
-            DBG("SMS status report indication");
+            qti_radio_ext_handle_sms_report_indication(self, &args);
             return NULL;
         case QTI_RADIO_IND_INCOMING_SMS_INDICATION:
             qti_radio_ext_handle_incoming_sms_indication(self, &args);
@@ -576,6 +621,16 @@ qti_radio_ext_add_incoming_sms_handler(
 {
     return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
         SIGNAL_EXT_ON_INCOMING_SMS_NAME, G_CALLBACK(handler), user_data) : 0;
+}
+
+gulong
+qti_radio_ext_add_sms_report_handler(
+    QtiRadioExt* self,
+    QtiRadioExtSmsReportFunc handler,
+    void* user_data)
+{
+    return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
+        SIGNAL_EXT_ON_SMS_REPORT_NAME, G_CALLBACK(handler), user_data) : 0;
 }
 
 static
@@ -1246,8 +1301,8 @@ qti_radio_ext_send_ims_sms_args(
     sms->message_ref = msg_ref;
 
     // I guess?
-    // we don't need to retry as ofono will handle it
-    sms->shall_retry = FALSE;
+    // True if BINDER_EXT_SMS_SEND_RETRY is set
+    sms->shall_retry = BINDER_EXT_SMS_SEND_RETRY == (flags & BINDER_EXT_SMS_SEND_RETRY);
 
     binder_copy_hidl_string(args, &sms->format, "3gpp");
     binder_copy_hidl_string(args, &sms->smsc, smsc);
@@ -1404,6 +1459,10 @@ qti_radio_ext_class_init(
         g_signal_new(SIGNAL_EXT_ON_INCOMING_SMS_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
             2, G_TYPE_POINTER, G_TYPE_UINT);
+    qti_radio_ext_signals[SIGNAL_EXT_ON_SMS_REPORT] =
+        g_signal_new(SIGNAL_EXT_ON_SMS_REPORT_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            4, G_TYPE_POINTER, G_TYPE_UINT, G_TYPE_UINT);
 }
 
 /*
