@@ -1462,7 +1462,7 @@ qti_radio_ext_class_init(
     qti_radio_ext_signals[SIGNAL_EXT_ON_SMS_REPORT] =
         g_signal_new(SIGNAL_EXT_ON_SMS_REPORT_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
-            4, G_TYPE_POINTER, G_TYPE_UINT, G_TYPE_UINT);
+            3, G_TYPE_POINTER, G_TYPE_UINT, G_TYPE_UINT);
 }
 
 /*
