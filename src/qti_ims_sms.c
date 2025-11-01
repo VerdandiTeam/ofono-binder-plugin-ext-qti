@@ -300,10 +300,26 @@ qti_ims_sms_result_request_response(
     DBG("qti_ims_sms_result_request_response\n");
     DBG("result: %d\n", result);
 
-    if (result == QTI_RADIO_SEND_STATUS_OK) {
+    switch (result) {
+    case QTI_RADIO_SEND_STATUS_OK:
         send_result = BINDER_EXT_SMS_SEND_RESULT_OK;
-    } else {
+        break;
+    case QTI_RADIO_SEND_STATUS_ERROR:
         send_result = BINDER_EXT_SMS_SEND_RESULT_ERROR;
+        break;
+    case QTI_RADIO_SEND_STATUS_ERROR_RETRY:
+        send_result = BINDER_EXT_SMS_SEND_RESULT_RETRY;
+        break;
+    case QTI_RADIO_SEND_STATUS_ERROR_FALLBACK:
+        /* There's no equivalent code in ofono-binder-plugin, but using
+         * BINDER_EXT_SMS_SEND_RESULT_RETRY does get it to fallback to GSM. */
+        send_result = BINDER_EXT_SMS_SEND_RESULT_RETRY;
+        break;
+    default:
+        ofono_warn("Unknown error code from binder %d, "
+                   "falling back to GSM.", result);
+        send_result = BINDER_EXT_SMS_SEND_RESULT_RETRY;
+        break;
     }
 
     if (req->complete) {
