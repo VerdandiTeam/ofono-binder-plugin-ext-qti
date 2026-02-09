@@ -1169,7 +1169,7 @@ qti_radio_ext_dial_args(
     dial_request_writer->call_details.cause_code = 0; // none
     dial_request_writer->call_details.rtt_mode = 0;
 
-    dial_request_writer->has_call_details = FALSE;
+    dial_request_writer->has_call_details = TRUE;
     dial_request_writer->has_is_conference_uri = FALSE;
     dial_request_writer->is_conference_uri = FALSE;
     dial_request_writer->has_is_call_pull = FALSE;
