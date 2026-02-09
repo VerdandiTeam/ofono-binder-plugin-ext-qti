@@ -1149,7 +1149,7 @@ qti_radio_ext_dial_args(
     }
 
     dial_request_writer->call_details.call_type = QTI_RADIO_CALL_TYPE_VOICE;
-    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_UNKNOWN;
+    dial_request_writer->call_details.call_domain = QTI_RADIO_CALL_DOMAIN_PS;
     dial_request_writer->call_details.extras_length = 0;
 
     dial_request_writer->call_details.extras.count = 0;
@@ -1169,7 +1169,7 @@ qti_radio_ext_dial_args(
     dial_request_writer->call_details.cause_code = 0; // none
     dial_request_writer->call_details.rtt_mode = 0;
 
-    dial_request_writer->has_call_details = FALSE;
+    dial_request_writer->has_call_details = TRUE;
     dial_request_writer->has_is_conference_uri = FALSE;
     dial_request_writer->is_conference_uri = FALSE;
     dial_request_writer->has_is_call_pull = FALSE;

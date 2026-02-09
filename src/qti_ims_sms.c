@@ -67,6 +67,8 @@ typedef struct qti_ims_sms {
     guint next_msg_ref;         /* Counter for generating message references */
     GQueue* incoming_queue;     /* Queue for incoming SMS when no handlers connected */
     GQueue* report_queue;       /* Queue for SMS reports when no handlers connected */
+    gulong incoming_sms_handler_id;
+    gulong sms_report_handler_id;
 } QtiImsSms;
 
 typedef struct qti_ims_sms_result_request {
@@ -604,8 +606,10 @@ qti_ims_sms_new(
         self->report_queue = g_queue_new();
         self->next_msg_ref = 0;
 
-        qti_radio_ext_add_incoming_sms_handler(radio_ext, qti_ims_sms_incoming_sms_handler, self);
-        qti_radio_ext_add_sms_report_handler(radio_ext, qti_ims_sms_report_handler, self);
+        self->incoming_sms_handler_id = qti_radio_ext_add_incoming_sms_handler(
+            radio_ext, qti_ims_sms_incoming_sms_handler, self);
+        self->sms_report_handler_id = qti_radio_ext_add_sms_report_handler(
+            radio_ext, qti_ims_sms_report_handler, self);
 
         return BINDER_EXT_SMS(self);
     }
@@ -622,6 +626,18 @@ qti_ims_sms_finalize(
     GObject* object)
 {
     QtiImsSms* self = THIS(object);
+
+    /* Disconnect signal handlers before unreffing radio_ext to prevent use-after-free */
+    if (self->radio_ext) {
+        if (self->incoming_sms_handler_id) {
+            g_signal_handler_disconnect(self->radio_ext, self->incoming_sms_handler_id);
+            self->incoming_sms_handler_id = 0;
+        }
+        if (self->sms_report_handler_id) {
+            g_signal_handler_disconnect(self->radio_ext, self->sms_report_handler_id);
+            self->sms_report_handler_id = 0;
+        }
+    }
     
     /* Clean up the pending ack queue */
     if (self->pending_ack_queue) {

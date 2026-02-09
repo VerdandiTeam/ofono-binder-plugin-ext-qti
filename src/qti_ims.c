@@ -59,6 +59,7 @@ typedef struct qti_ims {
     char* slot;
     QtiRadioExt* radio_ext;
     BINDER_EXT_IMS_STATE ims_state;
+    gulong ims_reg_status_handler_id;
 } QtiIms;
 
 static
@@ -345,8 +346,8 @@ qti_ims_new(
     self->ims_state = BINDER_EXT_IMS_STATE_UNKNOWN;
 
     if (self->radio_ext) {
-        qti_radio_ext_add_ims_reg_status_handler(self->radio_ext,
-            qti_ims_reg_status_changed, self);
+        self->ims_reg_status_handler_id = qti_radio_ext_add_ims_reg_status_handler(
+            self->radio_ext, qti_ims_reg_status_changed, self);
     }
 
     qti_ims_add_get_state_handler(self, qti_ims_get_registrations);
@@ -364,6 +365,12 @@ qti_ims_finalize(
     GObject* object)
 {
     QtiIms* self = THIS(object);
+
+    /* Disconnect signal handler before unreffing radio_ext to prevent use-after-free */
+    if (self->radio_ext && self->ims_reg_status_handler_id) {
+        g_signal_handler_disconnect(self->radio_ext, self->ims_reg_status_handler_id);
+        self->ims_reg_status_handler_id = 0;
+    }
 
     g_free(self->slot);
     qti_radio_ext_unref(self->radio_ext);

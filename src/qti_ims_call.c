@@ -42,6 +42,8 @@ typedef struct qti_ims_call {
     QtiRadioExt* radio_ext;
     GPtrArray* calls;
     GHashTable* id_map;
+    gulong call_state_handler_id;
+    gulong ring_handler_id;
 } QtiImsCall;
 
 static
@@ -510,10 +512,10 @@ qti_ims_call_new(
         self->radio_ext = qti_radio_ext_ref(radio_ext);
         self->calls = g_ptr_array_new_with_free_func(qti_call_info_free);
 
-        qti_radio_ext_add_call_state_handler(radio_ext,
-            qti_ims_call_handle_call_info, self);
-        qti_radio_ext_add_ring_handler(radio_ext,
-            qti_ims_call_handle_ring, self);
+        self->call_state_handler_id = qti_radio_ext_add_call_state_handler(
+                radio_ext, qti_ims_call_handle_call_info, self);
+        self->ring_handler_id = qti_radio_ext_add_ring_handler(
+                radio_ext, qti_ims_call_handle_ring, self);
         qti_radio_ext_add_ringback_tone_handler(radio_ext,
             qti_ims_call_handle_ringback_tone, self);
 
@@ -532,6 +534,18 @@ qti_ims_call_finalize(
     GObject* object)
 {
     QtiImsCall* self = THIS(object);
+
+    /* Disconnect signal handlers before unreffing radio_ext to prevent use-after-free */
+    if (self->radio_ext) {
+        if (self->call_state_handler_id) {
+            g_signal_handler_disconnect(self->radio_ext, self->call_state_handler_id);
+            self->call_state_handler_id = 0;
+        }
+        if (self->ring_handler_id) {
+            g_signal_handler_disconnect(self->radio_ext, self->ring_handler_id);
+            self->ring_handler_id = 0;
+        }
+    }
 
     qti_radio_ext_unref(self->radio_ext);
     gutil_idle_pool_destroy(self->pool);

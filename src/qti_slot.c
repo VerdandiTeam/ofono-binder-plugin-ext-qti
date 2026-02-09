@@ -76,6 +76,18 @@ qti_slot_terminate(
         binder_ext_ims_unref(self->ims);
         self->ims = NULL;
     }
+    if (self->call) {
+        binder_ext_call_unref(self->call);
+        self->call = NULL;
+    }
+    if (self->sms) {
+        binder_ext_sms_unref(self->sms);
+        self->sms = NULL;
+    }
+    if (self->radio_ext) {
+        qti_radio_ext_unref(self->radio_ext);
+        self->radio_ext = NULL;
+    }
 }
 
 /*==========================================================================*
@@ -121,7 +133,7 @@ qti_slot_new(
 {
     QtiSlot* self = g_object_new(THIS_TYPE, NULL);
     BinderExtSlot* slot = &self->parent;
-    char* radio_slot =  g_strdup_printf("imsradio%d", radio->slot_index);
+    char* radio_slot = g_strdup_printf("imsradio%d", radio->slot_index);
 
     self->radio_ext = qti_radio_ext_new(radio->dev, radio_slot);
     if (self->radio_ext) {
