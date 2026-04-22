@@ -485,6 +485,7 @@ qti_radio_ext_handle_incoming_sms_indication(
         gutil_log_dump(&qti_radio_ext_binder_dump_module, GLOG_LEVEL_VERBOSE, "  ", pdu_copy, pdu_len);
 
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_INCOMING_SMS], 0, pdu_copy, pdu_len);
+        g_free((void*)pdu_copy);
     } else {
         DBG("%s: failed to parse incoming SMS data", self->slot);
     }
@@ -527,6 +528,7 @@ qti_radio_ext_handle_sms_report_indication(
         gutil_log_dump(&qti_radio_ext_binder_dump_module, GLOG_LEVEL_VERBOSE, "  ", pdu_copy, pdu_len);
 
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_SMS_REPORT], 0, pdu_copy, pdu_len, message_ref);
+        g_free((void*)pdu_copy);
     } else {
         DBG("%s: failed to parse SMS status report data", self->slot);
     }
