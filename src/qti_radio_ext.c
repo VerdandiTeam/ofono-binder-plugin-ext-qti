@@ -345,8 +345,10 @@ qti_radio_ext_handle_ims_reg_status_report(
     const QtiRadioRegInfo* info =
         qti_radio_ext_read_ims_reg_status_info(self, &reader);
 
-    g_signal_emit(self, qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED],
-                    0, info->state);
+    if (info) {
+        g_signal_emit(self, qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED],
+                        0, info->state);
+    }
 }
 
 static
