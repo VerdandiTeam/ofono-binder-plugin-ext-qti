@@ -132,6 +132,7 @@ qti_slot_new(
         DBG("slot->radio_ext is null ");
     }
 
+    g_free(radio_slot);
     return slot;
 }
 
