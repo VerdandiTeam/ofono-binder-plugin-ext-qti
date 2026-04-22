@@ -400,7 +400,8 @@ qti_ims_call_info_new(
     dest->flags = BINDER_EXT_CALL_FLAG_IMS | BINDER_EXT_CALL_FLAG_INCOMING;
 
     dest->number = ptr;
-    memcpy(ptr, number.data.str, number_len);
+    if (number.data.str && number_len > 0)
+        memcpy(ptr, number.data.str, number_len);
     ptr += G_ALIGN8(number_len + 1);
 
     return dest;
