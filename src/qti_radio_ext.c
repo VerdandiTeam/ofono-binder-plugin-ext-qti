@@ -1429,6 +1429,11 @@ qti_radio_ext_finalize(
     QtiRadioExt* self = THIS(object);
 
     g_free(self->slot);
+    g_hash_table_destroy(self->requests);
+    gbinder_client_unref(self->client);
+    gbinder_local_object_unref(self->response);
+    gbinder_local_object_unref(self->indication);
+    gutil_idle_pool_destroy(self->pool);
     G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }
 
