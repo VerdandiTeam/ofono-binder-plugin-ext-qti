@@ -348,6 +348,8 @@ qti_radio_ext_handle_ims_reg_status_report(
     if (info) {
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED],
                         0, info->state);
+    } else {
+        ofono_warn("Failed to parse reg status");
     }
 }
 
