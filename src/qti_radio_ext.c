@@ -345,8 +345,12 @@ qti_radio_ext_handle_ims_reg_status_report(
     const QtiRadioRegInfo* info =
         qti_radio_ext_read_ims_reg_status_info(self, &reader);
 
-    g_signal_emit(self, qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED],
-                    0, info->state);
+    if (info) {
+        g_signal_emit(self, qti_radio_ext_signals[SIGNAL_IMS_REG_STATUS_CHANGED],
+                        0, info->state);
+    } else {
+        ofono_warn("Failed to parse reg status");
+    }
 }
 
 static
@@ -398,7 +402,8 @@ qti_ims_call_info_new(
     dest->flags = BINDER_EXT_CALL_FLAG_IMS | BINDER_EXT_CALL_FLAG_INCOMING;
 
     dest->number = ptr;
-    memcpy(ptr, number.data.str, number_len);
+    if (number.data.str && number_len > 0)
+        memcpy(ptr, number.data.str, number_len);
     ptr += G_ALIGN8(number_len + 1);
 
     return dest;
@@ -482,6 +487,7 @@ qti_radio_ext_handle_incoming_sms_indication(
         gutil_log_dump(&qti_radio_ext_binder_dump_module, GLOG_LEVEL_VERBOSE, "  ", pdu_copy, pdu_len);
 
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_INCOMING_SMS], 0, pdu_copy, pdu_len);
+        g_free((void*)pdu_copy);
     } else {
         DBG("%s: failed to parse incoming SMS data", self->slot);
     }
@@ -524,6 +530,7 @@ qti_radio_ext_handle_sms_report_indication(
         gutil_log_dump(&qti_radio_ext_binder_dump_module, GLOG_LEVEL_VERBOSE, "  ", pdu_copy, pdu_len);
 
         g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_SMS_REPORT], 0, pdu_copy, pdu_len, message_ref);
+        g_free((void*)pdu_copy);
     } else {
         DBG("%s: failed to parse SMS status report data", self->slot);
     }
@@ -1424,6 +1431,11 @@ qti_radio_ext_finalize(
     QtiRadioExt* self = THIS(object);
 
     g_free(self->slot);
+    g_hash_table_destroy(self->requests);
+    gbinder_client_unref(self->client);
+    gbinder_local_object_unref(self->response);
+    gbinder_local_object_unref(self->indication);
+    gutil_idle_pool_destroy(self->pool);
     G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }
 

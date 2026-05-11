@@ -664,8 +664,8 @@ qti_ims_sms_class_init(
     G_OBJECT_CLASS(klass)->finalize = qti_ims_sms_finalize;
     qti_ims_sms_signals[SIGNAL_SMS_REPORT] =
         g_signal_new(SIGNAL_SMS_REPORT_NAME, type,
-            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2
-            , G_TYPE_POINTER, G_TYPE_UINT);
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            3, G_TYPE_POINTER, G_TYPE_UINT, G_TYPE_UINT);
     qti_ims_sms_signals[SIGNAL_SMS_RECEIVED] =
         g_signal_new(SIGNAL_SMS_RECEIVED_NAME, type,
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,

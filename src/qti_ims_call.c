@@ -87,6 +87,18 @@ enum qti_ims_call_signal {
 static guint qti_ims_call_signals[SIGNAL_COUNT] = { 0 };
 
 static
+void
+qti_call_info_free(
+    gpointer data)
+{
+    BinderExtCallInfo* info = data;
+
+    g_free((char*)info->number);
+    g_free((char*)info->name);
+    g_free(info);
+}
+
+static
 QtiImsCallResultRequest*
 qti_ims_call_result_request_new(
     BinderExtCall* ext,
@@ -471,7 +483,7 @@ qti_ims_call_new(
         QtiImsCall* self = g_object_new(THIS_TYPE, NULL);
 
         self->radio_ext = qti_radio_ext_ref(radio_ext);
-        self->calls = g_ptr_array_new_with_free_func(g_free);
+        self->calls = g_ptr_array_new_with_free_func(qti_call_info_free);
 
         qti_radio_ext_add_call_state_handler(radio_ext,
             qti_ims_call_handle_call_info, self);
@@ -496,7 +508,7 @@ qti_ims_call_finalize(
 
     qti_radio_ext_unref(self->radio_ext);
     gutil_idle_pool_destroy(self->pool);
-    gutil_ptrv_free((void**)self->calls);
+    g_ptr_array_free(self->calls, TRUE);
     g_hash_table_unref(self->id_map);
     G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }

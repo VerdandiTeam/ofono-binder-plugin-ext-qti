@@ -132,6 +132,7 @@ qti_slot_new(
         DBG("slot->radio_ext is null ");
     }
 
+    g_free(radio_slot);
     return slot;
 }
 
@@ -144,7 +145,12 @@ void
 qti_slot_finalize(
     GObject* object)
 {
-    qti_slot_terminate(THIS(object));
+    QtiSlot* self = THIS(object);
+
+    qti_slot_terminate(self);
+    binder_ext_call_unref(self->call);
+    binder_ext_sms_unref(self->sms);
+    qti_radio_ext_unref(self->radio_ext);
     G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }
 
