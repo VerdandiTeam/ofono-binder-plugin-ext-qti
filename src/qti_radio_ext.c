@@ -912,7 +912,7 @@ static const QtiRadioInterfaceDesc qti_radio_interfaces[] = {
    { QTI_RADIO_INTERFACE_DESC(1_0) }
 };
 
-#define DEFAULT_INTERFACE QTI_RADIO_INTERFACE_1_0
+#define DEFAULT_INTERFACE QTI_RADIO_INTERFACE_1_2
 
 
 static
