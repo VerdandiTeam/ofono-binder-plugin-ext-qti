@@ -202,6 +202,8 @@ qti_radio_ext_ind_name(
 #define QTI_RADIO_IND_(code, name, NAME) \
         case QTI_RADIO_IND_##NAME: return #name;
     QTI_RADIO_IND_1_0(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_1(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_2(QTI_RADIO_IND_)
 #undef QTI_RADIO_IND_
     }
     return NULL;
@@ -1293,8 +1295,8 @@ qti_radio_ext_hangup(
     void* user_data)
 {
     return qti_radio_ext_result_request_submit(self,
-        QTI_RADIO_REQ_HANGUP_1_2,
-        QTI_RADIO_RESP_HANGUP_1_2,
+        QTI_RADIO_REQ_HANGUP,
+        QTI_RADIO_RESP_HANGUP,
         qti_radio_ext_hangup_args,
         complete, destroy, user_data,
         call_id);
