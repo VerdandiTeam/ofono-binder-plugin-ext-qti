@@ -62,8 +62,11 @@ typedef enum qti_radio_interface {
 #define QTI_RADIO_INDICATION_1_5        QTI_RADIO_IFACE_1_5(QTI_RADIO_INDICATION_IFACE)
 
 #define QTI_RADIO_REQ_LAST_1_0          40
-#define QTI_RADIO_REQ_LAST_1_1          41
-#define QTI_RADIO_REQ_LAST_1_2          47
+#define QTI_RADIO_REQ_LAST_1_1          45
+#define QTI_RADIO_REQ_LAST_1_2          51
+#define QTI_RADIO_REQ_LAST_1_3          53
+#define QTI_RADIO_REQ_LAST_1_4          57
+#define QTI_RADIO_REQ_LAST_1_5          60
 
 /*
 enum RegState : int32_t {
@@ -613,7 +616,7 @@ typedef struct qti_radio_hangup_request_info {
     c(6, 3, hangup, HANGUP) \
     c(7, 4, requestRegistrationChange, REQ_REG_CHANGE) \
     c(31, 28, setSuppServiceNotification, SET_SUPP_SVC_NOTIFICATION) \
-    c(40, 36, cancelModifyCall, CANCEL_MODIFY_CALL) \
+    c(40, 36, cancelModifyCall, CANCEL_MODIFY_CALL)
 
 #define QTI_RADIO_EXT_IMS_CALL_1_1(c) \
     c(45, 103, hangup_1_1, HANGUP_1_1)
@@ -624,7 +627,16 @@ typedef struct qti_radio_hangup_request_info {
     c(48, 42, acknowledgeSms, ACK_SMS) \
     c(49, 43, acknowledgeSmsReport, ACK_SMS_REPORT) \
     c(50, 44, getSmsFormat, GET_SMS_FORMAT) \
-    c(51, 33, sendGeolocationInfo_1_2, SEND_GEOLOCATION_INFO_1_2) \
+    c(51, 33, sendGeolocationInfo_1_2, SEND_GEOLOCATION_INFO_1_2)
+
+#define QTI_RADIO_EXT_IMS_CALL_1_3(c) \
+    c(52, 303, hangup_1_3, HANGUP_1_3)
+
+#define QTI_RADIO_EXT_IMS_CALL_1_4(c) \
+    c(56, 401, dial_1_4, DIAL_1_4)
+
+#define QTI_RADIO_EXT_IMS_CALL_1_5(c) \
+    c(60, 542, acknowledgeSms_1_5, ACK_SMS_1_5)
 
 typedef enum qti_radio_req {
     QTI_RADIO_REQ_SET_CALLBACK = 1, /* setCallback */
@@ -632,6 +644,9 @@ typedef enum qti_radio_req {
     QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_REQ_)
     QTI_RADIO_EXT_IMS_CALL_1_1(QTI_RADIO_REQ_)
     QTI_RADIO_EXT_IMS_CALL_1_2(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_3(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_4(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_5(QTI_RADIO_REQ_)
 #undef QTI_RADIO_REQ_
 } QTI_RADIO_REQ;
 
@@ -640,6 +655,9 @@ typedef enum ims_radio_resp {
     QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_RESP_)
     QTI_RADIO_EXT_IMS_CALL_1_1(QTI_RADIO_RESP_)
     QTI_RADIO_EXT_IMS_CALL_1_2(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_3(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_4(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_5(QTI_RADIO_RESP_)
 #undef QTI_RADIO_RESP_
 } IMS_RADIO_RESP;
 
@@ -679,22 +697,21 @@ typedef enum ims_radio_resp {
     e(28, onIncomingImsSms, INCOMING_SMS_INDICATION) \
     e(29, onVopsChanged, VOPS_CHANGED_INDICATION)
 
-//#define QTI_RADIO_IND_1_3(e) \
-    e(30, callStateChanged_1_3, CALL_STATE_INDICATION_1_3) \
+#define QTI_RADIO_IND_1_3(e) \
+    e(30, callStateChanged_1_3, CALL_STATE_INDICATION_1_3)
     // onIncomingCallAutoRejected
     // onVoiceInfoChanged
 
-    // 1.4
+#define QTI_RADIO_IND_1_4(e) \
+    e(35, callStateChanged_1_4, CALL_STATE_INDICATION_1_4)
     // onMultiIdentityRegistrationStatusChange
     // onMultiIdentityInfoPending
-    // onCallStateChanged_1_4
 
-    // 1.5
-    // onCallStateChanged_1_5
+#define QTI_RADIO_IND_1_5(e) \
+    e(36, callStateChanged_1_5, CALL_STATE_INDICATION_1_5)
     // onIncomingCallAutoRejected_1_5
     // onModemSupportsWfcRoamingModeConfiguration
     // onUssdMessageFailed
-    //
 
 
 typedef enum ims_radio_ind {
@@ -703,6 +720,9 @@ typedef enum ims_radio_ind {
     QTI_RADIO_IND_1_0(QTI_RADIO_IND_)
     QTI_RADIO_IND_1_1(QTI_RADIO_IND_)
     QTI_RADIO_IND_1_2(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_3(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_4(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_5(QTI_RADIO_IND_)
 #undef QTI_RADIO_IND_
 } IMS_RADIO_IND;
 

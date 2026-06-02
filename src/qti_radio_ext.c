@@ -174,6 +174,9 @@ qti_radio_ext_req_name(
     QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_REQ_)
     QTI_RADIO_EXT_IMS_CALL_1_1(QTI_RADIO_REQ_)
     QTI_RADIO_EXT_IMS_CALL_1_2(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_3(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_4(QTI_RADIO_REQ_)
+    QTI_RADIO_EXT_IMS_CALL_1_5(QTI_RADIO_REQ_)
 #undef QTI_RADIO_REQ_
     }
     return NULL;
@@ -189,6 +192,9 @@ qti_radio_ext_resp_name(
     QTI_RADIO_EXT_IMS_CALL_1_0(QTI_RADIO_RESP_)
     QTI_RADIO_EXT_IMS_CALL_1_1(QTI_RADIO_RESP_)
     QTI_RADIO_EXT_IMS_CALL_1_2(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_3(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_4(QTI_RADIO_RESP_)
+    QTI_RADIO_EXT_IMS_CALL_1_5(QTI_RADIO_RESP_)
 #undef QTI_RADIO_RESP_
     }
     return NULL;
@@ -204,6 +210,9 @@ qti_radio_ext_ind_name(
     QTI_RADIO_IND_1_0(QTI_RADIO_IND_)
     QTI_RADIO_IND_1_1(QTI_RADIO_IND_)
     QTI_RADIO_IND_1_2(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_3(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_4(QTI_RADIO_IND_)
+    QTI_RADIO_IND_1_5(QTI_RADIO_IND_)
 #undef QTI_RADIO_IND_
     }
     return NULL;
@@ -602,6 +611,24 @@ qti_radio_ext_indication(
             qti_radio_ext_handle_incoming_sms_indication(self, &args);
             return NULL;
         }
+    } else if (g_str_equal(iface, QTI_RADIO_INDICATION_1_3)) {
+        switch(code) {
+            case QTI_RADIO_IND_CALL_STATE_INDICATION_1_3:
+                qti_radio_ext_handle_call_state_indication(self, &args);
+                return NULL;
+        }
+    } else if (g_str_equal(iface, QTI_RADIO_INDICATION_1_4)) {
+        switch(code) {
+            case QTI_RADIO_IND_CALL_STATE_INDICATION_1_4:
+                qti_radio_ext_handle_call_state_indication(self, &args);
+                return NULL;
+        }
+    } else if (g_str_equal(iface, QTI_RADIO_INDICATION_1_5)) {
+        switch(code) {
+            case QTI_RADIO_IND_CALL_STATE_INDICATION_1_5:
+                qti_radio_ext_handle_call_state_indication(self, &args);
+                return NULL;
+        }
     }
 
     return NULL;
@@ -890,6 +917,9 @@ qti_radio_ext_result_request_submit(
 
 
 static const GBinderClientIfaceInfo radio_iface_info[] = {
+    {QTI_RADIO_1_5, QTI_RADIO_REQ_LAST_1_5 },
+    {QTI_RADIO_1_4, QTI_RADIO_REQ_LAST_1_4 },
+    {QTI_RADIO_1_3, QTI_RADIO_REQ_LAST_1_3 },
     {QTI_RADIO_1_2, QTI_RADIO_REQ_LAST_1_2 },
     {QTI_RADIO_1_1, QTI_RADIO_REQ_LAST_1_1 },
     {QTI_RADIO_1_0, QTI_RADIO_REQ_LAST_1_0 }
@@ -909,6 +939,9 @@ typedef struct qti_radio_interface_desc {
         QTI_RADIO_INDICATION_##v
 
 static const QtiRadioInterfaceDesc qti_radio_interfaces[] = {
+   { QTI_RADIO_INTERFACE_DESC(1_5) },
+   { QTI_RADIO_INTERFACE_DESC(1_4) },
+   { QTI_RADIO_INTERFACE_DESC(1_3) },
    { QTI_RADIO_INTERFACE_DESC(1_2) },
    { QTI_RADIO_INTERFACE_DESC(1_1) },
    { QTI_RADIO_INTERFACE_DESC(1_0) }
@@ -1295,7 +1328,7 @@ qti_radio_ext_hangup(
     void* user_data)
 {
     return qti_radio_ext_result_request_submit(self,
-        QTI_RADIO_REQ_HANGUP,
+        QTI_RADIO_REQ_HANGUP_1_3,
         QTI_RADIO_RESP_HANGUP,
         qti_radio_ext_hangup_args,
         complete, destroy, user_data,

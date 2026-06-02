@@ -342,7 +342,6 @@ qti_ims_call_hangup(
     GDestroyNotify destroy,
     void* user_data)
 {
-
     QtiImsCall* self = THIS(ext);
 
     QtiImsCallResultRequest* req = qti_ims_call_result_request_new(ext,
